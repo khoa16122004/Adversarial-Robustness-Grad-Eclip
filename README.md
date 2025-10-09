@@ -15,7 +15,7 @@ Grad-Eclip is a straightforward and easy-to-implement method to generate visual 
 
 If you use the code in your research, please cite:
 ```
-@inproceedings{chenyangodam,
+@inproceedings{chenyang_gradeclip,
   title={Gradient-based Visual Explanation for CLIP},
   author={Zhao, Chenyang and Wang, Kun and Zeng, Xingyu and Zhao, Rui and Chan, B. Antoni},
   booktitle={International Conference on Machine Learning (ICML)},
