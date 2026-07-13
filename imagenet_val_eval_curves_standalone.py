@@ -131,7 +131,7 @@ def collect_image_items(data_path, folder_to_label, max_images=None):
 def main():
     parser = argparse.ArgumentParser(description="Standalone ImageNet-val deletion/insertion curves")
     parser.add_argument("--data-path", required=True, help="Path to ImageNet val folder")
-    parser.add_argument("--index-json", default="imagenet_class_index.json", help="Path to imagenet_class_index.json")
+    parser.add_argument("--index-json", default="imgnet1k_label.json", help="Path to imagenet_class_index.json")
     parser.add_argument(
         "--methods",
         default="eclip,eclip-wo-ksim,game,maskclip,gradcam,rollout,surgery,m2ib,rise",
