@@ -1,4 +1,4 @@
-from util import generate_hm
+from util import generate_hm, visualize
 from PIL import Image
 from torchvision.transforms import Resize
 import clip
@@ -19,3 +19,10 @@ text_processed = clip.tokenize([caption]).cuda()
 text_embedding = clipmodel.encode_text(text_processed)
 text_embedding = F.normalize(text_embedding, dim=-1)
 print("[text embedding]:", text_embedding.shape)
+
+# eclip
+hm_type = 'eclip'
+hm = generate_hm(clipmodel, hm_type, img, text_embedding, [caption], resize)
+c_ret = visualize(hm, img.copy(), resize)
+Image.fromarray(c_ret).save(f"{hm_type}.png")
+
