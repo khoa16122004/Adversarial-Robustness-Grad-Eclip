@@ -35,13 +35,13 @@ for hm_type in hm_types:
 	c_ret = visualize(hm, img.copy(), resize)
 	vis_images.append((hm_type, Image.fromarray(c_ret)))
 
-font_size = max(18, min(34, w // 12))
+font_size = max(30, min(56, w // 7))
 try:
 	font = ImageFont.truetype("arial.ttf", font_size)
 except OSError:
 	font = ImageFont.load_default()
 
-label_h = font_size + 18
+label_h = font_size + 26
 canvas_w = w * len(vis_images)
 canvas_h = h + label_h
 canvas = Image.new('RGB', (canvas_w, canvas_h), color=(255, 255, 255))
