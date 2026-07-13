@@ -417,7 +417,7 @@ def grad_cam(c, layer_feat, map_size):
     return grad_cam.reshape(*map_size)
 
 ### MaskCLIP
-def mask_clip(txt_feats, v_final, k_out, map_size):
+def mask_clip(clipmodel, txt_feats, v_final, k_out, map_size):
     ## similarity between text prompt and v_out
     v_final = F.normalize(v_final, dim=-1)
     cosine_v = (v_final @ txt_feats)[0].transpose(1,0)
