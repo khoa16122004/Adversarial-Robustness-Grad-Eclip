@@ -88,11 +88,16 @@ def insertion_sequence(image, heatmap, preprocess, device, l_steps, cal_gap):
     return torch.cat(tensors, dim=0), np.array(fractions)
 
 
-def class_probabilities(clipmodel, zero_shot_weights, image_batch, class_idx):
+def class_probabilities(clipmodel, zero_shot_weights, image_batch, class_idx, batch_size):
+    probs_list = []
     with torch.no_grad():
-        image_features = clipmodel.encode_image(image_batch)
-        logits = 100.0 * image_features @ zero_shot_weights
-        probs = logits.softmax(dim=-1)
+        total = image_batch.shape[0]
+        for start in range(0, total, batch_size):
+            end = min(start + batch_size, total)
+            image_features = clipmodel.encode_image(image_batch[start:end])
+            logits = 100.0 * image_features @ zero_shot_weights
+            probs_list.append(logits.softmax(dim=-1))
+    probs = torch.cat(probs_list, dim=0)
     return probs[:, class_idx].detach().cpu().numpy()
 
 
@@ -137,10 +142,14 @@ def main():
     parser.add_argument("--max-images", type=int, default=None, help="Optional cap on images")
     parser.add_argument("--L", type=int, default=100, help="Total perturbation steps")
     parser.add_argument("--gap", type=int, default=10, help="Evaluate every N steps")
+    parser.add_argument("--batch-size", type=int, default=32, help="Batch size for CLIP probability inference")
     parser.add_argument("--output", default="imagenet_val_curves.png", help="Output plot path")
     parser.add_argument("--summary", default="imagenet_val_curves_summary.txt", help="Summary txt path")
     parser.add_argument("--device", default=None, help="cuda or cpu")
     args = parser.parse_args()
+
+    if args.batch_size < 1:
+        raise ValueError("--batch-size must be >= 1")
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     methods = [m.strip() for m in args.methods.split(",") if m.strip()]
@@ -204,8 +213,8 @@ def main():
                 del_batch, del_fraction = deletion_sequence(img, heatmap, preprocess, device, args.L, args.gap)
                 ins_batch, ins_fraction = insertion_sequence(img, heatmap, preprocess, device, args.L, args.gap)
 
-                del_probs = class_probabilities(clipmodel, zero_shot_weights, del_batch, eval_label)
-                ins_probs = class_probabilities(clipmodel, zero_shot_weights, ins_batch, eval_label)
+                del_probs = class_probabilities(clipmodel, zero_shot_weights, del_batch, eval_label, args.batch_size)
+                ins_probs = class_probabilities(clipmodel, zero_shot_weights, ins_batch, eval_label, args.batch_size)
 
                 del_curve = np.concatenate(([original_prob], del_probs))
                 ins_curve = np.concatenate((ins_probs, [original_prob]))
