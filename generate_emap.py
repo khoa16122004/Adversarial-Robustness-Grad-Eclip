@@ -244,7 +244,7 @@ def attention_layer(q, k, v, num_heads=1, attn_mask=None):
     attn_output_weights = attn_output_weights.sum(dim=1) / num_heads
     return attn_output, attn_output_weights
     
-def clip_encode_dense(x):
+def clip_encode_dense(clipmodel, x):
     vision_width = clipmodel.visual.transformer.width
     vision_heads = vision_width // 64
     clip_inres = clipmodel.visual.input_resolution
@@ -308,8 +308,8 @@ def clip_encode_dense(x):
     
     return x, v_final[:,1:], x_in, v, q_out, k_out, attn, attn_output, (feah, feaw)
 
-    
-def clip_encode_text_dense(text, n):
+
+def clip_encode_text_dense(clipmodel, text, n):
     x = clipmodel.token_embedding(text).type(clipmodel.dtype)  # [batch_size, n_ctx, d_model]
     attn_mask=clipmodel.build_attention_mask().to(dtype=x.dtype, device=x.device)
     x = x + clipmodel.positional_embedding.type(clipmodel.dtype)
