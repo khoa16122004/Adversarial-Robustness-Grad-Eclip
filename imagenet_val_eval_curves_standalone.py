@@ -104,9 +104,31 @@ def class_probabilities(clipmodel, zero_shot_weights, image_batch, class_idx, ba
 def load_imagenet_label_map(index_json_path):
     with open(index_json_path, "r", encoding="utf-8") as f:
         class_dict = json.load(f)
+
+    if not isinstance(class_dict, dict) or len(class_dict) == 0:
+        raise ValueError(f"Invalid label json format: {index_json_path}")
+
+    sample_key = next(iter(class_dict.keys()))
     folder_to_label = {}
-    for label_str, values in class_dict.items():
-        folder_to_label[values[0]] = int(label_str)
+
+    # Format A: imagenet_class_index.json -> {"0": ["n01440764", "tench"], ...}
+    if str(sample_key).isdigit():
+        for label_str, values in class_dict.items():
+            if not isinstance(values, list) or len(values) < 1:
+                continue
+            folder_to_label[str(values[0])] = int(label_str)
+        return folder_to_label
+
+    # Format B: imgnet1k_label.json -> {"n01440764": [0, "tench"], ...}
+    for wnid, values in class_dict.items():
+        if isinstance(values, list) and len(values) > 0:
+            folder_to_label[str(wnid)] = int(values[0])
+        elif isinstance(values, int):
+            folder_to_label[str(wnid)] = int(values)
+
+    if not folder_to_label:
+        raise ValueError(f"Could not parse label mapping from: {index_json_path}")
+
     return folder_to_label
 
 
