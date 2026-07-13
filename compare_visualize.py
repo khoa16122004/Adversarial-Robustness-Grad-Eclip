@@ -35,8 +35,13 @@ for hm_type in hm_types:
 	c_ret = visualize(hm, img.copy(), resize)
 	vis_images.append((hm_type, Image.fromarray(c_ret)))
 
-font = ImageFont.load_default()
-label_h = 24
+font_size = max(18, min(34, w // 12))
+try:
+	font = ImageFont.truetype("arial.ttf", font_size)
+except OSError:
+	font = ImageFont.load_default()
+
+label_h = font_size + 18
 canvas_w = w * len(vis_images)
 canvas_h = h + label_h
 canvas = Image.new('RGB', (canvas_w, canvas_h), color=(255, 255, 255))
@@ -45,7 +50,12 @@ draw = ImageDraw.Draw(canvas)
 for idx, (name, vis_img) in enumerate(vis_images):
 	x = idx * w
 	canvas.paste(vis_img, (x, label_h))
-	draw.text((x + 6, 6), name, fill=(0, 0, 0), font=font)
+	bbox = draw.textbbox((0, 0), name, font=font)
+	text_w = bbox[2] - bbox[0]
+	text_h = bbox[3] - bbox[1]
+	text_x = x + (w - text_w) // 2
+	text_y = (label_h - text_h) // 2
+	draw.text((text_x, text_y), name, fill=(0, 0, 0), font=font)
 
 canvas.save('compare_methods_row.png')
 
