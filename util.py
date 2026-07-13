@@ -6,11 +6,6 @@ import numpy as np
 from PIL import Image
 
 import torch.nn.functional as F
-
-from generate_emap import preprocess, imgprocess_keepsize, mm_clipmodel, mm_interpret, \
-        clip_encode_dense, grad_eclip, grad_cam, mask_clip, compute_rollout_attention, \
-        surgery_model, clip_surgery_map, m2ib_model, m2ib_clip_map, \
-        generate_masks, rise
 from generate_emap import CLIPExplainRunner
 
 
@@ -26,10 +21,16 @@ def _get_explainer(clipmodel, preprocess):
             device=("cuda" if torch.cuda.is_available() else "cpu"),
         )
     return _EXPLAINER_CACHE[cache_key]
-    img_keepsized = imgprocess_keepsize(img).to(device).unsqueeze(0)
+
 def generate_hm(clipmodel, hm_type, img, txt_embedding, txts, resize, preprocess):
     explainer = _get_explainer(clipmodel, preprocess)
     return explainer.generate_hm(hm_type, img, txt_embedding, txts, resize)
+
+
+def visualize(hmap, raw_image, resize):
+    image = np.asarray(raw_image.copy())
+    hmap = resize(hmap.unsqueeze(0))[0].cpu().numpy()
+    color = cv2.applyColorMap((hmap*255).astype(np.uint8), cv2.COLORMAP_JET) # cv2 to plt
     color = cv2.cvtColor(color, cv2.COLOR_BGR2RGB)
     c_ret = np.clip(image * (1 - 0.5) + color * 0.5, 0, 255).astype(np.uint8)
     return c_ret
