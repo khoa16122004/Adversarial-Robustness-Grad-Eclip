@@ -178,7 +178,7 @@ def pgd_minimize_similarity(
 
     x_adv = x0.clone().detach()
     if random_start:
-        x_adv = x_adv + torch.empty_like(x_adv).uniform_(-1.0, 1.0) * eps_tensor
+        x_adv = x_adv - torch.empty_like(x_adv).uniform_(-1.0, 1.0) * eps_tensor
         x_adv = torch.max(torch.min(x_adv, x0 + eps_tensor), x0 - eps_tensor)
         x_adv = torch.max(torch.min(x_adv, upper), lower)
 
