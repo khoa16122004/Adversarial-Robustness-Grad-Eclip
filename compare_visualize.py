@@ -1,5 +1,5 @@
 from util import generate_hm, visualize
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from torchvision.transforms import Resize
 import clip
 import torch.nn.functional as F
@@ -20,9 +20,32 @@ text_embedding = clipmodel.encode_text(text_processed)
 text_embedding = F.normalize(text_embedding, dim=-1)
 print("[text embedding]:", text_embedding.shape)
 
-# eclip
-hm_type = 'eclip'
-hm = generate_hm(clipmodel, hm_type, img, text_embedding, [caption], resize)
-c_ret = visualize(hm, img.copy(), resize)
-Image.fromarray(c_ret).save(f"{hm_type}.png")
+hm_types = [
+	'eclip',
+	'eclip-wo-ksim',
+	'game',
+	'maskclip',
+	'gradcam',
+	'rollout',
+]
+
+vis_images = []
+for hm_type in hm_types:
+	hm = generate_hm(clipmodel, hm_type, img, text_embedding, [caption], resize)
+	c_ret = visualize(hm, img.copy(), resize)
+	vis_images.append((hm_type, Image.fromarray(c_ret)))
+
+font = ImageFont.load_default()
+label_h = 24
+canvas_w = w * len(vis_images)
+canvas_h = h + label_h
+canvas = Image.new('RGB', (canvas_w, canvas_h), color=(255, 255, 255))
+draw = ImageDraw.Draw(canvas)
+
+for idx, (name, vis_img) in enumerate(vis_images):
+	x = idx * w
+	canvas.paste(vis_img, (x, label_h))
+	draw.text((x + 6, 6), name, fill=(0, 0, 0), font=font)
+
+canvas.save('compare_methods_row.png')
 
