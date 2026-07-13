@@ -6,8 +6,6 @@ from PIL import Image
 from torchvision.transforms import Resize
 import matplotlib.pyplot as plt
 
-from clip_utils import build_zero_shot_classifier
-from imagenet_metadata import IMAGENET_CLASSNAMES, OPENAI_IMAGENET_TEMPLATES
 from generate_emap import CLIPExplainRunner
 
 
@@ -21,12 +19,13 @@ def make_grids(h, w):
     return grids
 
 
-def compute_class_probabilities(clipmodel, zero_shot_weights, image_batch, class_idx):
+def compute_cosine_scores(clipmodel, image_batch, text_embedding):
     with torch.no_grad():
         image_features = clipmodel.encode_image(image_batch)
-        logits = 100.0 * image_features @ zero_shot_weights
-        probs = logits.softmax(dim=-1)
-    return probs[:, class_idx].detach().cpu().numpy()
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+        text_features = text_embedding / text_embedding.norm(dim=-1, keepdim=True)
+        cosine = (image_features @ text_features.T).squeeze(-1)
+    return cosine.detach().cpu().numpy()
 
 
 def random_pixel(image, poses):
@@ -92,22 +91,20 @@ def insertion_sequence(image, heatmap, preprocess, device, L, cal_gap):
     return torch.cat(tensors, dim=0), np.array(fractions)
 
 
-def get_heatmap(explainer, hm_type, image, class_idx, zero_shot_weights, resize):
-    txt_embedding = zero_shot_weights[:, class_idx].unsqueeze(0)
-    txts = [IMAGENET_CLASSNAMES[class_idx]]
-    emap = explainer.generate_hm(hm_type, image, txt_embedding, txts, resize)
+def get_heatmap(explainer, hm_type, image, text_embedding, text, resize):
+    emap = explainer.generate_hm(hm_type, image, text_embedding, [text], resize)
     return emap.detach().cpu().numpy()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Single-image deletion/insertion probability curves")
+    parser = argparse.ArgumentParser(description="Single-image deletion/insertion cosine-similarity curves")
     parser.add_argument("--image", required=True, help="Path to input image")
+    parser.add_argument("--text", required=True, help="Text prompt for cosine similarity")
     parser.add_argument(
         "--methods",
         default="eclip,eclip-wo-ksim,game,maskclip,gradcam,rollout,surgery,m2ib,rise",
         help="Comma-separated explain methods",
     )
-    parser.add_argument("--class-index", type=int, default=None, help="Use fixed target class index (default: top1 of original image)")
     parser.add_argument("--L", type=int, default=100, help="Total perturbation steps")
     parser.add_argument("--gap", type=int, default=10, help="Evaluate every N steps")
     parser.add_argument("--output", default="single_image_curves.png", help="Output plot path")
@@ -119,32 +116,16 @@ def main():
     clipmodel, preprocess = clip.load("ViT-B/16", device=device)
     explainer = CLIPExplainRunner(clipmodel=clipmodel, preprocess=preprocess, device=device)
 
-    zero_shot_weights = build_zero_shot_classifier(
-        clipmodel,
-        classnames=IMAGENET_CLASSNAMES,
-        templates=OPENAI_IMAGENET_TEMPLATES,
-        num_classes_per_batch=10,
-        device=device,
-        use_tqdm=True,
-    )
-
     image = Image.open(args.image).convert("RGB")
     w, h = image.size
     resize = Resize((h, w))
 
-    image_tensor = preprocess(image).to(device).unsqueeze(0)
+    text_tokens = clip.tokenize([args.text]).to(device)
     with torch.no_grad():
-        image_features = clipmodel.encode_image(image_tensor)
-        logits = 100.0 * image_features @ zero_shot_weights
-        probs = logits.softmax(dim=-1)
-        pred_idx = int(probs.argmax(dim=-1).item())
-        original_prob = float(probs[0].detach().cpu().numpy()[pred_idx])
+        text_embedding = clipmodel.encode_text(text_tokens)
 
-    class_idx = pred_idx if args.class_index is None else args.class_index
-    class_name = IMAGENET_CLASSNAMES[class_idx]
-
-    if args.class_index is not None:
-        original_prob = float(probs[0, class_idx].detach().cpu().item())
+    image_tensor = preprocess(image).to(device).unsqueeze(0)
+    original_cosine = float(compute_cosine_scores(clipmodel, image_tensor, text_embedding)[0])
 
     methods = [m.strip() for m in args.methods.split(",") if m.strip()]
     deletion_curves = {}
@@ -152,20 +133,20 @@ def main():
     x_del = None
     x_ins = None
 
-    print(f"Using class index: {class_idx} ({class_name})")
+    print(f"Using text prompt: {args.text}")
 
     for hm_type in methods:
         print(f"[method] {hm_type}")
-        heatmap = get_heatmap(explainer, hm_type, image, class_idx, zero_shot_weights, resize)
+        heatmap = get_heatmap(explainer, hm_type, image, text_embedding, args.text, resize)
 
         del_batch, del_fraction = deletion_sequence(image, heatmap, preprocess, device, args.L, args.gap)
         ins_batch, ins_fraction = insertion_sequence(image, heatmap, preprocess, device, args.L, args.gap)
 
-        del_probs = compute_class_probabilities(clipmodel, zero_shot_weights, del_batch, class_idx)
-        ins_probs = compute_class_probabilities(clipmodel, zero_shot_weights, ins_batch, class_idx)
+        del_scores = compute_cosine_scores(clipmodel, del_batch, text_embedding)
+        ins_scores = compute_cosine_scores(clipmodel, ins_batch, text_embedding)
 
-        deletion_curves[hm_type] = np.concatenate(([original_prob], del_probs))
-        insertion_curves[hm_type] = np.concatenate((ins_probs, [original_prob]))
+        deletion_curves[hm_type] = np.concatenate(([original_cosine], del_scores))
+        insertion_curves[hm_type] = np.concatenate((ins_scores, [original_cosine]))
         x_del = np.concatenate(([0.0], del_fraction))
         x_ins = np.concatenate((ins_fraction, [1.0]))
 
@@ -177,17 +158,17 @@ def main():
 
     axes[0].set_title("Deletion Curve")
     axes[0].set_xlabel("Removed Pixel Ratio")
-    axes[0].set_ylabel(f"P(class={class_idx})")
+    axes[0].set_ylabel("Cosine Similarity")
     axes[0].grid(True, alpha=0.3)
 
     axes[1].set_title("Insertion Curve")
     axes[1].set_xlabel("Inserted Pixel Ratio")
-    axes[1].set_ylabel(f"P(class={class_idx})")
+    axes[1].set_ylabel("Cosine Similarity")
     axes[1].grid(True, alpha=0.3)
 
     axes[1].legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
 
-    plt.suptitle(f"Image: {args.image} | Class: {class_idx} ({class_name})")
+    plt.suptitle(f"Image: {args.image} | Text: {args.text}")
     plt.tight_layout()
     plt.savefig(args.output, bbox_inches="tight")
     print(f"Saved curve figure to: {args.output}")
