@@ -27,6 +27,9 @@ hm_types = [
 	'maskclip',
 	'gradcam',
 	'rollout',
+    'surgery',
+    'm2ib',
+    'rise'
 ]
 
 vis_images = []
