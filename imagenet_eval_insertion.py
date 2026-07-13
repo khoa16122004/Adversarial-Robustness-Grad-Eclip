@@ -13,12 +13,11 @@ import numpy as np
 from torchvision.transforms import Resize
 import torch.nn.functional as F
 
-from generate_emap import clipmodel, preprocess, imgprocess_keepsize, mm_clipmodel, mm_interpret, \
-    clip_encode_dense, grad_eclip, grad_cam, mask_clip, compute_rollout_attention, surgery_model, clip_surgery_map, \
-    m2ib_model, m2ib_clip_map
-import Game_MM_CLIP.clip as mm_clip
+from generate_emap import CLIPExplainRunner
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+clipmodel, preprocess = clip.load("ViT-B/16", device=device)
+explainer = CLIPExplainRunner(clipmodel=clipmodel, preprocess=preprocess, device=device)
 
 def accuracy(output, target, topk=(1,)):
     pred = output.topk(max(topk), 1, True, True)[1].t()
@@ -66,54 +65,12 @@ def insertion_process(image, heatmap, L, cal_gap, ins_path, img_name):
 
 
 def generate_hm(hm_type, img, gt, pred, resize):
-    img_keepsized = imgprocess_keepsize(img).to(device).unsqueeze(0)
-    outputs, v_final, last_input, v, q_out, k_out,\
-        attn, att_output, map_size = clip_encode_dense(img_keepsized)
-    img_embedding = F.normalize(outputs[:,0], dim=-1)
-    if "gt" in hm_type:
-        exp_target = gt
-        txt_embedding = zero_shot_weights[:, gt]
-        cosine = (img_embedding @ txt_embedding)[0]
-    elif "pred" in hm_type:
-        exp_target = pred
-        txt_embedding = zero_shot_weights[:, pred]
-        cosine = (img_embedding @ txt_embedding)[0]
-    else:
-        None
-
-    if hm_type == "selfattn":
-        emap = attn[0,:1,1:].detach().reshape(*map_size)
-    elif "gradcam" in hm_type:
-        emap = grad_cam(cosine, last_input, map_size)
-    elif "maskclip" in hm_type:
-        emap = mask_clip(txt_embedding.unsqueeze(-1), v_final, k_out, map_size)[0]
-    elif "eclip" in hm_type:
-        emap = grad_eclip(cosine, q_out, k_out, v, att_output, map_size, withksim=False) \
-            if "wo-ksim" in hm_type else grad_eclip(cosine, q_out, k_out, v, att_output, map_size, withksim=True)
-    elif "game" in hm_type:
-        img_clipreprocess = preprocess(img).to(device).unsqueeze(0)
-        text_tokenized = mm_clip.tokenize(IMAGENET_CLASSNAMES[exp_target]).to(device)
-        emap = mm_interpret(model=mm_clipmodel, image=img_clipreprocess, texts=text_tokenized, device=device)       
-    elif "rollout" in hm_type:
-        img_clipreprocess = preprocess(img).to(device).unsqueeze(0)
-        text_tokenized = mm_clip.tokenize(IMAGENET_CLASSNAMES[exp_target]).to(device)   
-        attentions = mm_interpret(model=mm_clipmodel, image=img_clipreprocess, texts=text_tokenized, device=device, rollout=True)      
-        emap = compute_rollout_attention(attentions)[0]
-    elif "surgery" in hm_type:
-        img_clipreprocess = preprocess(img).to(device).unsqueeze(0)
-        all_texts = ['airplane', 'bag', 'bed', 'bedclothes', 'bench', 'bicycle', 'bird', 'boat', 'book', 'bottle', 'building', 'bus', 'cabinet', 'car', 'cat', 'ceiling', 'chair', 'cloth', 'computer', 'cow', 'cup', 'curtain', 'dog', 'door', 'fence', 'floor', 'flower', 'food', 'grass', 'ground', 'horse', 'keyboard', 'light', 'motorbike', 'mountain', 'mouse', 'person', 'plate', 'platform', 'potted plant', 'road', 'rock', 'sheep', 'shelves', 'sidewalk', 'sign', 'sky', 'snow', 'sofa', 'table', 'track', 'train', 'tree', 'truck', 'tv monitor', 'wall', 'water', 'window', 'wood']
-        all_texts.insert(0, IMAGENET_CLASSNAMES[exp_target])
-        emap = clip_surgery_map(model=surgery_model, image=img_clipreprocess, texts=all_texts, device=device)[0,:,:,0]
-    elif "m2ib" in hm_type:
-        img_clipreprocess = preprocess(img).to(device).unsqueeze(0)
-        emap = m2ib_clip_map(model=m2ib_model, image=img_clipreprocess, texts=IMAGENET_CLASSNAMES[exp_target], device=device)
-        emap = torch.tensor(emap)
-
-
-    emap -= emap.min()
-    emap /= emap.max()
-    emap = resize(emap.unsqueeze(0))[0].cpu().numpy()
-    return emap
+    exp_target = pred if "pred" in hm_type else gt
+    base_hm_type = hm_type.replace("_gt", "").replace("_pred", "")
+    txt_embedding = zero_shot_weights[:, exp_target].unsqueeze(0)
+    txts = [IMAGENET_CLASSNAMES[exp_target]]
+    emap = explainer.generate_hm(base_hm_type, img, txt_embedding, txts, resize)
+    return emap.cpu().numpy()
 
 if __name__ == '__main__':
     data_path = "./data/imagenet/val/"

@@ -1,4 +1,5 @@
 import os
+import time
 import cv2
 import math
 import clip
@@ -101,13 +102,19 @@ def rise(model, image, txt_embedding, device, N=2000, s=8, p1=0.5):
 
 
 ### M2IB
-def m2ib_clip_map(model, image, texts, device, vbeta=0.1, vvar=1, vlayer=9, tbeta=0.1, tvar=1, tlayer=9):
-    text_ids = torch.tensor([clip_tokenizer.encode(texts, add_special_tokens=True)]).to(device)
+def m2ib_clip_map(model, image, texts, device, tokenizer=None, vbeta=0.1, vvar=1, vlayer=9, tbeta=0.1, tvar=1, tlayer=9):
+    if tokenizer is None:
+        tokenizer = clip_tokenizer
+    text_input = texts[0] if isinstance(texts, list) else texts
+    text_ids = torch.tensor([tokenizer.encode(text_input, add_special_tokens=True)]).to(device)
     vmap = vision_heatmap_iba(text_ids, image, model, vlayer, vbeta, vvar)
     return vmap
 
-def m2ib_clip_text_map(model, image, texts, device, vbeta=0.1, vvar=1, vlayer=9, tbeta=0.1, tvar=1, tlayer=9):
-    text_ids = torch.tensor([clip_tokenizer.encode(texts, add_special_tokens=True)]).to(device)
+def m2ib_clip_text_map(model, image, texts, device, tokenizer=None, vbeta=0.1, vvar=1, vlayer=9, tbeta=0.1, tvar=1, tlayer=9):
+    if tokenizer is None:
+        tokenizer = clip_tokenizer
+    text_input = texts[0] if isinstance(texts, list) else texts
+    text_ids = torch.tensor([tokenizer.encode(text_input, add_special_tokens=True)]).to(device)
     tmap = text_heatmap_iba(text_ids, image, model, tlayer, tbeta, tvar)
     return tmap
 
@@ -431,6 +438,117 @@ def mask_clip(clipmodel, txt_feats, v_final, k_out, map_size):
 
     sim_v = cosine_v * cosine_qk[None,:]
     return sim_v.detach().reshape(-1, *map_size)
+
+
+class CLIPExplainRunner:
+    def __init__(self, clipmodel, preprocess, device=None, clip_model_name="ViT-B/16"):
+        self.clipmodel = clipmodel
+        self.preprocess = preprocess
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.clip_model_name = clip_model_name
+
+        self.mm_clipmodel, _ = mm_clip.load(self.clip_model_name, device=self.device, jit=False)
+        self.surgery_model, _ = surgery_clip.load(f"CS-{self.clip_model_name}", device=self.device)
+        self.clip_tokenizer = CLIPTokenizerFast.from_pretrained("openai/clip-vit-base-patch16")
+        self.m2ib_model = ClipWrapper(self.clipmodel)
+        self._sync_aux_models_from_clip()
+
+    def _sync_aux_models_from_clip(self):
+        # Keep auxiliary explainers aligned with the base CLIP weights when possible.
+        base_state_dict = self.clipmodel.state_dict()
+        self.mm_clipmodel.load_state_dict(base_state_dict, strict=False)
+        self.surgery_model.load_state_dict(base_state_dict, strict=False)
+
+    def generate_hm(self, hm_type, img, txt_embedding, txts, resize):
+        start = time.time()
+        img_keepsized = imgprocess_keepsize(img).to(self.device).unsqueeze(0)
+        outputs, v_final, last_input, v, q_out, k_out, \
+            attn, att_output, map_size = clip_encode_dense(self.clipmodel, img_keepsized)
+        img_embedding = F.normalize(outputs[:, 0], dim=-1)
+        cosines = (img_embedding @ txt_embedding.T)[0]
+
+        if hm_type == "selfattn":
+            emap = attn[0, :1, 1:].detach().reshape(*map_size)
+        elif "gradcam" in hm_type:
+            emap = [grad_cam(c, last_input, map_size) for c in cosines]
+            emap = torch.stack(emap, dim=0).sum(0)
+        elif "maskclip" in hm_type:
+            emap = mask_clip(self.clipmodel, txt_embedding.T, v_final, k_out, map_size)
+            emap = emap.sum(0)
+        elif "eclip" in hm_type:
+            emap = [
+                grad_eclip(c, q_out, k_out, v, att_output, map_size, withksim=False)
+                if "wo-ksim" in hm_type
+                else grad_eclip(c, q_out, k_out, v, att_output, map_size, withksim=True)
+                for c in cosines
+            ]
+            emap = torch.stack(emap, dim=0).sum(0)
+        elif "game" in hm_type:
+            start = time.time()
+            img_clipreprocess = self.preprocess(img).to(self.device).unsqueeze(0)
+            text_tokenized = mm_clip.tokenize(txts).to(self.device)
+            emap = mm_interpret(
+                model=self.mm_clipmodel,
+                image=img_clipreprocess,
+                texts=text_tokenized,
+                device=self.device,
+            )
+            emap = emap.sum(0)
+        elif "rollout" in hm_type:
+            start = time.time()
+            img_clipreprocess = self.preprocess(img).to(self.device).unsqueeze(0)
+            text_tokenized = mm_clip.tokenize(txts).to(self.device)
+            attentions = mm_interpret(
+                model=self.mm_clipmodel,
+                image=img_clipreprocess,
+                texts=text_tokenized,
+                device=self.device,
+                rollout=True,
+            )
+            emap = compute_rollout_attention(attentions)[0]
+        elif "surgery" in hm_type:
+            start = time.time()
+            img_clipreprocess = self.preprocess(img).to(self.device).unsqueeze(0)
+            all_texts = [
+                'airplane', 'bag', 'bed', 'bedclothes', 'bench', 'bicycle', 'bird', 'boat', 'book', 'bottle',
+                'building', 'bus', 'cabinet', 'car', 'cat', 'ceiling', 'chair', 'cloth', 'computer', 'cow',
+                'cup', 'curtain', 'dog', 'door', 'fence', 'floor', 'flower', 'food', 'grass', 'ground', 'horse',
+                'keyboard', 'light', 'motorbike', 'mountain', 'mouse', 'person', 'plate', 'platform',
+                'potted plant', 'road', 'rock', 'sheep', 'shelves', 'sidewalk', 'sign', 'sky', 'snow', 'sofa',
+                'table', 'track', 'train', 'tree', 'truck', 'tv monitor', 'wall', 'water', 'window', 'wood'
+            ]
+            all_texts = txts + all_texts
+            emap = clip_surgery_map(
+                model=self.surgery_model,
+                image=img_clipreprocess,
+                texts=all_texts,
+                device=self.device,
+            )[0, :, :, 0]
+        elif "m2ib" in hm_type:
+            start = time.time()
+            img_clipreprocess = self.preprocess(img).to(self.device).unsqueeze(0)
+            emap = m2ib_clip_map(
+                model=self.m2ib_model,
+                image=img_clipreprocess,
+                texts=txts,
+                device=self.device,
+                tokenizer=self.clip_tokenizer,
+            )
+            emap = torch.tensor(emap)
+        elif "rise" in hm_type:
+            start = time.time()
+            img_clipreprocess = self.preprocess(img).unsqueeze(0)
+            emap = rise(model=self.clipmodel, image=img_clipreprocess, txt_embedding=txt_embedding, device=self.device)
+        else:
+            raise ValueError(f"Unknown hm_type: {hm_type}")
+
+        end = time.time()
+        print("processing time: ", end - start)
+
+        emap -= emap.min()
+        emap /= emap.max()
+        emap = resize(emap.unsqueeze(0))[0]
+        return emap
 
 def save_map(image, emap, resize, path, tag):
     emap -= emap.min()

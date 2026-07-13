@@ -1,4 +1,5 @@
-from util import generate_hm, visualize
+from util import visualize
+from generate_emap import CLIPExplainRunner
 from PIL import Image, ImageDraw, ImageFont
 from torchvision.transforms import Resize
 import clip
@@ -20,6 +21,8 @@ text_embedding = clipmodel.encode_text(text_processed)
 text_embedding = F.normalize(text_embedding, dim=-1)
 print("[text embedding]:", text_embedding.shape)
 
+explainer = CLIPExplainRunner(clipmodel=clipmodel, preprocess=preprocess, device='cuda')
+
 hm_types = [
 	'eclip',
 	'eclip-wo-ksim',
@@ -34,7 +37,7 @@ hm_types = [
 
 vis_images = []
 for hm_type in hm_types:
-	hm = generate_hm(clipmodel, hm_type, img, text_embedding, [caption], resize)
+	hm = explainer.generate_hm(hm_type, img, text_embedding, [caption], resize)
 	c_ret = visualize(hm, img.copy(), resize)
 	vis_images.append((hm_type, Image.fromarray(c_ret)))
 
