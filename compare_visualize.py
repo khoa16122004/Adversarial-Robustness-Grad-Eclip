@@ -2,7 +2,6 @@ from util import generate_hm
 from PIL import Image
 from torchvision.transforms import Resize
 import clip
-from clip import tokenizer
 import torch.nn.functional as F
 
 clipmodel, preprocess = clip.load("ViT-B/16", device='cuda')
