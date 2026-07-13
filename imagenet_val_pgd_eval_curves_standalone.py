@@ -192,7 +192,7 @@ def pgd_minimize_similarity(
         cosine = (image_feat @ text_feat.T).mean()
 
         grad = torch.autograd.grad(cosine, x_adv, retain_graph=False, create_graph=False)[0]
-        x_adv = x_adv - alpha_tensor * grad.sign()
+        x_adv = x_adv + alpha_tensor * grad.sign()
         x_adv = torch.max(torch.min(x_adv, x0 + eps_tensor), x0 - eps_tensor)
         x_adv = torch.max(torch.min(x_adv, upper), lower)
         x_adv = x_adv.detach()
