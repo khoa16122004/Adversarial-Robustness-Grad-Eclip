@@ -101,7 +101,9 @@ def parse_samples(sample_json_path, input_image_dir, max_images=None):
 
 def pgd_minimize_similarity(
     clip_model,
+    zero_shot_weights,
     x0,
+    initial_pred_label,
     target_text_embedding,
     device,
     eps=8.0 / 255.0,
@@ -126,6 +128,19 @@ def pgd_minimize_similarity(
     text_feat = target_text_embedding.detach()
     text_feat = text_feat / text_feat.norm(dim=-1, keepdim=True)
 
+    sim_history = []
+    init_pred_prob_history = []
+
+    with torch.no_grad():
+        init_image_feat = clip_model.encode_image(x_adv)
+        init_image_feat = init_image_feat / init_image_feat.norm(dim=-1, keepdim=True)
+        init_sim = float((init_image_feat @ text_feat.T).item())
+        init_logits = 100.0 * init_image_feat @ zero_shot_weights
+        init_probs = init_logits.softmax(dim=-1)
+        init_pred_prob = float(init_probs[0, initial_pred_label].item())
+        sim_history.append(init_sim)
+        init_pred_prob_history.append(init_pred_prob)
+
     for _ in range(steps):
         x_adv.requires_grad_(True)
         image_feat = clip_model.encode_image(x_adv)
@@ -140,7 +155,17 @@ def pgd_minimize_similarity(
         x_adv = torch.max(torch.min(x_adv, upper), lower)
         x_adv = x_adv.detach()
 
-    return x_adv
+        with torch.no_grad():
+            step_feat = clip_model.encode_image(x_adv)
+            step_feat = step_feat / step_feat.norm(dim=-1, keepdim=True)
+            step_sim = float((step_feat @ text_feat.T).item())
+            step_logits = 100.0 * step_feat @ zero_shot_weights
+            step_probs = step_logits.softmax(dim=-1)
+            step_init_pred_prob = float(step_probs[0, initial_pred_label].item())
+            sim_history.append(step_sim)
+            init_pred_prob_history.append(step_init_pred_prob)
+
+    return x_adv, sim_history, init_pred_prob_history
 
 
 def main():
@@ -220,9 +245,11 @@ def main():
             clean_sim = float(clean_probs[0, pred_label].item())
 
         pred_text_embedding = zero_shot_weights[:, pred_label].unsqueeze(0)
-        x_adv = pgd_minimize_similarity(
+        x_adv, sim_history, init_pred_prob_history = pgd_minimize_similarity(
             clip_model=clip_model,
+            zero_shot_weights=zero_shot_weights,
             x0=x0,
+            initial_pred_label=pred_label,
             target_text_embedding=pred_text_embedding,
             device=device,
             eps=args.pgd_eps,
@@ -234,6 +261,9 @@ def main():
         with torch.no_grad():
             adv_feat = clip_model.encode_image(x_adv)
             adv_feat = adv_feat / adv_feat.norm(dim=-1, keepdim=True)
+            adv_logits = 100.0 * adv_feat @ zero_shot_weights
+            adv_probs = adv_logits.softmax(dim=-1)
+            adv_pred_label = int(adv_probs.argmax(dim=-1).item())
             text_feat = pred_text_embedding / pred_text_embedding.norm(dim=-1, keepdim=True)
             adv_sim = float((adv_feat @ text_feat.T).item())
 
@@ -254,9 +284,15 @@ def main():
                 "source_path": source_path,
                 "relative_path": rel_path,
                 "output_path": out_rel.replace("\\", "/"),
-                "pred_label": pred_label,
+                "from_pred_label": pred_label,
+                "from_pred_name": IMAGENET_CLASSNAMES[pred_label],
+                "to_pred_label": adv_pred_label,
+                "to_pred_name": IMAGENET_CLASSNAMES[adv_pred_label],
+                "class_transition": f"{pred_label}->{adv_pred_label}",
                 "clean_pred_prob": clean_sim,
                 "adv_text_cosine": adv_sim,
+                "sim_history_to_initial_text": sim_history,
+                "init_pred_prob_history": init_pred_prob_history,
             }
         )
 
