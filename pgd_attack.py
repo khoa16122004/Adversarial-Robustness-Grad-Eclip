@@ -3,12 +3,16 @@ import json
 import os
 
 import clip
+import matplotlib.cm as cm
+import numpy as np
 import torch
 import torchvision.transforms.functional as TF
 from PIL import Image
+from torchvision.transforms import Resize
 from tqdm import tqdm
 
 from clip_utils import build_zero_shot_classifier
+from generate_emap import CLIPExplainRunner
 from imagenet_metadata import IMAGENET_CLASSNAMES, OPENAI_IMAGENET_TEMPLATES
 
 
@@ -99,6 +103,17 @@ def parse_samples(sample_json_path, input_image_dir, max_images=None):
     return samples
 
 
+def heatmap_to_color_image(heatmap_tensor):
+    heatmap = heatmap_tensor.detach().cpu().numpy().astype(np.float32)
+    heatmap -= heatmap.min()
+    denom = heatmap.max()
+    if denom > 0:
+        heatmap /= denom
+    color = cm.get_cmap("jet")(heatmap)[..., :3]
+    color = (color * 255.0).astype(np.uint8)
+    return Image.fromarray(color)
+
+
 def pgd_minimize_similarity(
     clip_model,
     zero_shot_weights,
@@ -181,6 +196,7 @@ def main():
     parser.add_argument("--pgd-alpha", type=float, default=2.0 / 255.0, help="PGD step size in [0,1]")
     parser.add_argument("--pgd-steps", type=int, default=10, help="PGD iterations")
     parser.add_argument("--pgd-random-start", action="store_true", help="Enable random start")
+    parser.add_argument("--explain-method", default="eclip", help="Explain method name used for clean/adv maps")
     parser.add_argument("--save-ext", default=".png", help="Output extension (.png or .jpg)")
     parser.add_argument("--device", default=None, help="cuda or cpu")
     args = parser.parse_args()
@@ -198,6 +214,7 @@ def main():
 
     clip_model, preprocess = clip.load(args.clip_model, device=device)
     clip_model.eval()
+    explainer = CLIPExplainRunner(clipmodel=clip_model, preprocess=preprocess, device=device)
 
     zero_shot_weights = build_zero_shot_classifier(
         clip_model,
@@ -267,34 +284,63 @@ def main():
             text_feat = pred_text_embedding / pred_text_embedding.norm(dim=-1, keepdim=True)
             adv_sim = float((adv_feat @ text_feat.T).item())
 
+        clean_pixel = (x0 * std + mean).clamp(0.0, 1.0)
         adv_pixel = (x_adv * std + mean).clamp(0.0, 1.0)
+        clean_pil = TF.to_pil_image(clean_pixel.squeeze(0).cpu())
         adv_pil = TF.to_pil_image(adv_pixel.squeeze(0).cpu())
 
         base_rel, _ = os.path.splitext(rel_path)
-        out_rel = f"{base_rel}{args.save_ext}"
-        out_path = os.path.join(args.output_dir, out_rel)
-        out_folder = os.path.dirname(out_path)
-        if out_folder:
-            os.makedirs(out_folder, exist_ok=True)
+        sample_dir = os.path.join(args.output_dir, base_rel)
+        map_dir = os.path.join(sample_dir, "map")
+        os.makedirs(map_dir, exist_ok=True)
 
-        adv_pil.save(out_path)
+        clean_out_rel = f"{base_rel}/clean_image{args.save_ext}".replace("\\", "/")
+        adv_out_rel = f"{base_rel}/adv_image{args.save_ext}".replace("\\", "/")
+        clean_out_path = os.path.join(args.output_dir, clean_out_rel)
+        adv_out_path = os.path.join(args.output_dir, adv_out_rel)
 
-        summary["processed"].append(
-            {
-                "source_path": source_path,
-                "relative_path": rel_path,
-                "output_path": out_rel.replace("\\", "/"),
-                "from_pred_label": pred_label,
-                "from_pred_name": IMAGENET_CLASSNAMES[pred_label],
-                "to_pred_label": adv_pred_label,
-                "to_pred_name": IMAGENET_CLASSNAMES[adv_pred_label],
-                "class_transition": f"{pred_label}->{adv_pred_label}",
-                "clean_pred_prob": clean_sim,
-                "adv_text_cosine": adv_sim,
-                "sim_history_to_initial_text": sim_history,
-                "init_pred_prob_history": init_pred_prob_history,
-            }
-        )
+        clean_pil.save(clean_out_path)
+        adv_pil.save(adv_out_path)
+
+        map_resize = Resize((clean_pil.height, clean_pil.width))
+        txt_embedding = zero_shot_weights[:, pred_label].unsqueeze(0)
+        txts = [IMAGENET_CLASSNAMES[pred_label]]
+
+        clean_hm = explainer.generate_hm(args.explain_method, clean_pil, txt_embedding, txts, map_resize)
+        adv_hm = explainer.generate_hm(args.explain_method, adv_pil, txt_embedding, txts, map_resize)
+
+        clean_map_img = heatmap_to_color_image(clean_hm)
+        adv_map_img = heatmap_to_color_image(adv_hm)
+
+        clean_map_path = os.path.join(map_dir, f"clean_{args.explain_method}.png")
+        adv_map_path = os.path.join(map_dir, f"adv_{args.explain_method}.png")
+        clean_map_img.save(clean_map_path)
+        adv_map_img.save(adv_map_path)
+
+        sample_metadata = {
+            "source_path": source_path,
+            "relative_path": rel_path,
+            "clean_image_path": clean_out_rel,
+            "adv_image_path": adv_out_rel,
+            "explain_method": args.explain_method,
+            "clean_map_path": f"{base_rel}/map/clean_{args.explain_method}.png".replace("\\", "/"),
+            "adv_map_path": f"{base_rel}/map/adv_{args.explain_method}.png".replace("\\", "/"),
+            "from_pred_label": pred_label,
+            "from_pred_name": IMAGENET_CLASSNAMES[pred_label],
+            "to_pred_label": adv_pred_label,
+            "to_pred_name": IMAGENET_CLASSNAMES[adv_pred_label],
+            "class_transition": f"{pred_label}->{adv_pred_label}",
+            "clean_pred_prob": clean_sim,
+            "adv_text_cosine": adv_sim,
+            "sim_history_to_initial_text": sim_history,
+            "init_pred_prob_history": init_pred_prob_history,
+        }
+
+        metadata_path = os.path.join(sample_dir, "metadata.json")
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(sample_metadata, f, ensure_ascii=False, indent=2)
+
+        summary["processed"].append(sample_metadata)
 
     summary_path = os.path.join(args.output_dir, "attack_summary.json")
     with open(summary_path, "w", encoding="utf-8") as f:
