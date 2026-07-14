@@ -226,11 +226,10 @@ def main():
             continue
 
         w, h = clean_img.size
-        if max(w, h) > args.resize_max_side:
-            scale = max(w, h) / float(args.resize_max_side)
-            clean_img = clean_img.resize((int(w / scale), int(h / scale)))
 
         clean_tensor = preprocess(clean_img).to(device).unsqueeze(0)
+        print(preprocess)
+        raise
         with torch.no_grad():
             clean_features = clipmodel.encode_image(clean_tensor)
             clean_logits = 100.0 * clean_features @ zero_shot_weights
