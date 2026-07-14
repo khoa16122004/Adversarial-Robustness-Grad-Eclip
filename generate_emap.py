@@ -459,7 +459,7 @@ class CLIPExplainRunner:
         self.mm_clipmodel.load_state_dict(base_state_dict, strict=False)
         self.surgery_model.load_state_dict(base_state_dict, strict=False)
 
-    def generate_hm(self, hm_type, img, txt_embedding, txts):
+    def generate_hm(self, hm_type, img, txt_embedding, txts, resize):
         start = time.time()
         img_keepsized = imgprocess_keepsize(img).to(self.device).unsqueeze(0)
         outputs, v_final, last_input, v, q_out, k_out, \
@@ -547,12 +547,13 @@ class CLIPExplainRunner:
 
         emap -= emap.min()
         emap /= emap.max()
+        emap = resize(emap.unsqueeze(0))[0]
         return emap
 
-def save_map(image, emap, path, tag):
+def save_map(image, emap, resize, path, tag):
     emap -= emap.min()
     emap /= emap.max()
-    emap = emap.detach().cpu().numpy()
+    emap = resize(emap.unsqueeze(0))[0].cpu().numpy()
     color = cv2.applyColorMap((emap*255).astype(np.uint8), cv2.COLORMAP_JET) # cv2 to plt
     color = cv2.cvtColor(color, cv2.COLOR_BGR2RGB)
     c_ret = np.clip(image * (1 - 0.5) + color * 0.5, 0, 255).astype(np.uint8)
@@ -605,6 +606,7 @@ if __name__ == '__main__':
                     # print(img_name, w, h, ws, hs)
                     img = img.resize((ws,hs))
                 w, h = img.size
+                resize = T.Resize((h,w))
                 # make prediction
                 with torch.no_grad():
                     img_clipreprocess = preprocess(img).to(device).unsqueeze(0)
@@ -637,24 +639,24 @@ if __name__ == '__main__':
                 for i, c in enumerate(cosines):
                     # grad-eclip
                     eclip = grad_eclip(c, k_out, v, att_output, map_size)
-                    save_map(image, eclip, save_path, "{}/{}_eclip-wo-ksim_{}_{}".format(folder, img_name, tags[i], class_tags[i]))
+                    save_map(image, eclip, resize, save_path, "{}/{}_eclip-wo-ksim_{}_{}".format(folder, img_name, tags[i], class_tags[i]))
                     
                     # game-interprete
                     # text_tokenized = mm_clip.tokenize(IMAGENET_CLASSNAMES[class_tags[i]]).to(device)
                     # R_image = mm_interpret(model=mm_clipmodel, image=img_clipreprocess, texts=text_tokenized, device=device)
-                    # save_map(image, R_image, save_path, "{}/{}_game_{}_{}".format(folder, img_name, tags[i], class_tags[i]))
+                    # save_map(image, R_image, resize, save_path, "{}/{}_game_{}_{}".format(folder, img_name, tags[i], class_tags[i]))
 
                     # rollout
                     # text_tokenized = mm_clip.tokenize(IMAGENET_CLASSNAMES[class_tags[i]]).to(device)
                     # attentions = mm_interpret(model=mm_clipmodel, image=img_clipreprocess, texts=text_tokenized, device=device, rollout=True)
                     # rollout_image = compute_rollout_attention(attentions)[0]
-                    # save_map(image, rollout_image, save_path, "{}/{}_rollout_{}_{}".format(folder, img_name, tags[i], class_tags[i]))                    
+                    # save_map(image, rollout_image, resize, save_path, "{}/{}_rollout_{}_{}".format(folder, img_name, tags[i], class_tags[i]))                    
                     
                     # grad-cam
                     # gradcam = grad_cam(c, last_input, map_size)
-                    # save_map(image, gradcam, save_path, "{}/{}_gradcam_{}_{}".format(folder, img_name, tags[i], class_tags[i]))
-                    # save_map(image, maskclips[i], save_path, "{}/{}_maskclip_{}_{}".format(folder, img_name, tags[i], class_tags[i]))
-                # save_map(image, self_attn, save_path, "{}/{}_selfattn".format(folder, img_name))
+                    # save_map(image, gradcam, resize, save_path, "{}/{}_gradcam_{}_{}".format(folder, img_name, tags[i], class_tags[i]))
+                    # save_map(image, maskclips[i], resize, save_path, "{}/{}_maskclip_{}_{}".format(folder, img_name, tags[i], class_tags[i]))
+                # save_map(image, self_attn, resize, save_path, "{}/{}_selfattn".format(folder, img_name))
                 
         top1 = (top1 / n)
         top5 = (top5 / n)
