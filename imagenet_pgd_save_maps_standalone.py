@@ -2,25 +2,17 @@ import argparse
 import json
 import os
 
-from bleach import clean
 import clip
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
 from PIL import Image
-from torchvision.transforms import Resize
 from tqdm import tqdm
 
 from clip_utils import build_zero_shot_classifier
 from generate_emap import CLIPExplainRunner
 from imagenet_metadata import IMAGENET_CLASSNAMES, OPENAI_IMAGENET_TEMPLATES
-from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
-from torchvision.transforms.functional import InterpolationMode
-
-
-def _convert_image_to_rgb(image):
-    return image.convert("RGB")
 
 def load_imagenet_label_map(index_json_path):
     with open(index_json_path, "r", encoding="utf-8") as f:
@@ -178,7 +170,6 @@ def main():
         help="Class text used by PGD objective",
     )
     parser.add_argument("--max-images", type=int, default=None, help="Optional cap on images")
-    parser.add_argument("--resize-max-side", type=int, default=640, help="Resize long side guard for large images")
     parser.add_argument("--pgd-eps", type=float, default=8.0 / 255.0, help="PGD epsilon in pixel scale [0,1]")
     parser.add_argument("--pgd-alpha", type=float, default=2.0 / 255.0, help="PGD step size in pixel scale [0,1]")
     parser.add_argument("--pgd-steps", type=int, default=10, help="Number of PGD steps")
@@ -223,26 +214,6 @@ def main():
         f"attack_class={args.attack_class}",
         f"pgd=eps:{args.pgd_eps},alpha:{args.pgd_alpha},steps:{args.pgd_steps},random_start:{args.pgd_random_start}",
     ]
-    
-    spatial_transform = Compose([
-        Resize(
-            size=224,
-            interpolation=InterpolationMode.BICUBIC,
-            antialias=True
-        ),
-        CenterCrop((224, 224)),
-        _convert_image_to_rgb,
-    ])
-
-    # Tensor transforms (operate on Tensor)
-    tensor_transform = Compose([
-        ToTensor(),
-        Normalize(
-            mean=(0.48145466, 0.4578275, 0.40821073),
-            std=(0.26862954, 0.26130258, 0.27577711)
-        ),
-    ])
-    
 
     for idx, (image_path, folder, image_name, gt_label) in enumerate(tqdm(image_items, desc="PGD map saving"), start=1):
         try:
@@ -251,8 +222,7 @@ def main():
             summary_lines.append(f"skip\t{image_path}\terror={repr(exc)}")
             continue
 
-        clean_img = spatial_transform(clean_img)
-        clean_tensor = tensor_transform(clean_img).to(device).unsqueeze(0)
+        clean_tensor = preprocess(clean_img).to(device).unsqueeze(0)
         
         with torch.no_grad():
             clean_features = clipmodel.encode_image(clean_tensor)
@@ -279,8 +249,7 @@ def main():
             random_start=args.pgd_random_start,
         )
 
-        adv_img = spatial_transform(adv_img)
-        adv_tensor = tensor_transform(adv_img).to(device).unsqueeze(0)
+        adv_tensor = preprocess(adv_img).to(device).unsqueeze(0)
         with torch.no_grad():
             adv_features = clipmodel.encode_image(adv_tensor)
             adv_logits = 100.0 * adv_features @ zero_shot_weights
@@ -313,8 +282,8 @@ def main():
 
         for method in methods:
             try:
-                clean_hm = explainer.generate_hm(method, clean_img, explain_text_embedding, explain_texts, resize)
-                adv_hm = explainer.generate_hm(method, adv_img, explain_text_embedding, explain_texts, resize)
+                clean_hm = explainer.generate_hm(method, clean_img, explain_text_embedding, explain_texts)
+                adv_hm = explainer.generate_hm(method, adv_img, explain_text_embedding, explain_texts)
                 clean_hm = clean_hm.detach().cpu().numpy()
                 adv_hm = adv_hm.detach().cpu().numpy()
 
