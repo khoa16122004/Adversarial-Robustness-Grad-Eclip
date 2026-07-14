@@ -104,7 +104,10 @@ def parse_samples(sample_json_path, input_image_dir, max_images=None):
 
 
 def heatmap_to_color_image(heatmap_tensor):
-    heatmap = heatmap_tensor.detach().cpu().numpy().astype(np.float32)
+    if isinstance(heatmap_tensor, torch.Tensor):
+        heatmap = heatmap_tensor.detach().cpu().numpy().astype(np.float32)
+    else:
+        heatmap = np.asarray(heatmap_tensor, dtype=np.float32)
     heatmap -= heatmap.min()
     denom = heatmap.max()
     if denom > 0:
@@ -112,6 +115,15 @@ def heatmap_to_color_image(heatmap_tensor):
     color = cm.get_cmap("jet")(heatmap)[..., :3]
     color = (color * 255.0).astype(np.uint8)
     return Image.fromarray(color)
+
+
+def normalize_01(array_like):
+    arr = np.asarray(array_like, dtype=np.float32)
+    arr -= arr.min()
+    denom = arr.max()
+    if denom > 0:
+        arr /= denom
+    return arr
 
 
 def pgd_minimize_similarity(
@@ -309,13 +321,31 @@ def main():
         clean_hm = explainer.generate_hm(args.explain_method, clean_pil, txt_embedding, txts, map_resize)
         adv_hm = explainer.generate_hm(args.explain_method, adv_pil, txt_embedding, txts, map_resize)
 
-        clean_map_img = heatmap_to_color_image(clean_hm)
-        adv_map_img = heatmap_to_color_image(adv_hm)
+        clean_hm_np = normalize_01(clean_hm.detach().cpu().numpy())
+        adv_hm_np = normalize_01(adv_hm.detach().cpu().numpy())
+
+        clean_map_img = heatmap_to_color_image(clean_hm_np)
+        adv_map_img = heatmap_to_color_image(adv_hm_np)
 
         clean_map_path = os.path.join(map_dir, f"clean_{args.explain_method}.png")
         adv_map_path = os.path.join(map_dir, f"adv_{args.explain_method}.png")
         clean_map_img.save(clean_map_path)
         adv_map_img.save(adv_map_path)
+
+        clean_tensor_np = clean_pixel.squeeze(0).permute(1, 2, 0).detach().cpu().numpy().astype(np.float32)
+        adv_tensor_np = adv_pixel.squeeze(0).permute(1, 2, 0).detach().cpu().numpy().astype(np.float32)
+        clean_tensor_np = np.clip(clean_tensor_np, 0.0, 1.0)
+        adv_tensor_np = np.clip(adv_tensor_np, 0.0, 1.0)
+
+        clean_tensor_path = os.path.join(sample_dir, "clean_tensor_01.npy")
+        adv_tensor_path = os.path.join(sample_dir, "adv_tensor_01.npy")
+        clean_map_npy_path = os.path.join(map_dir, f"clean_{args.explain_method}.npy")
+        adv_map_npy_path = os.path.join(map_dir, f"adv_{args.explain_method}.npy")
+
+        np.save(clean_tensor_path, clean_tensor_np)
+        np.save(adv_tensor_path, adv_tensor_np)
+        np.save(clean_map_npy_path, clean_hm_np)
+        np.save(adv_map_npy_path, adv_hm_np)
 
         sample_metadata = {
             "source_path": source_path,
@@ -325,6 +355,10 @@ def main():
             "explain_method": args.explain_method,
             "clean_map_path": f"{base_rel}/map/clean_{args.explain_method}.png".replace("\\", "/"),
             "adv_map_path": f"{base_rel}/map/adv_{args.explain_method}.png".replace("\\", "/"),
+            "clean_map_npy_path": f"{base_rel}/map/clean_{args.explain_method}.npy".replace("\\", "/"),
+            "adv_map_npy_path": f"{base_rel}/map/adv_{args.explain_method}.npy".replace("\\", "/"),
+            "clean_tensor_01_path": f"{base_rel}/clean_tensor_01.npy".replace("\\", "/"),
+            "adv_tensor_01_path": f"{base_rel}/adv_tensor_01.npy".replace("\\", "/"),
             "from_pred_label": pred_label,
             "from_pred_name": IMAGENET_CLASSNAMES[pred_label],
             "to_pred_label": adv_pred_label,

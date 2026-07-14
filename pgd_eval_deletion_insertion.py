@@ -126,6 +126,10 @@ def find_sample_entries(attack_root):
 
         clean_rel = meta.get("clean_image_path")
         adv_rel = meta.get("adv_image_path")
+        clean_tensor_rel = meta.get("clean_tensor_01_path")
+        adv_tensor_rel = meta.get("adv_tensor_01_path")
+        clean_map_npy_rel = meta.get("clean_map_npy_path")
+        adv_map_npy_rel = meta.get("adv_map_npy_path")
         target_label = meta.get("from_pred_label")
 
         if clean_rel is None or adv_rel is None or target_label is None:
@@ -141,6 +145,10 @@ def find_sample_entries(attack_root):
                 "metadata_path": metadata_path,
                 "clean_path": clean_path,
                 "adv_path": adv_path,
+                "clean_tensor_path": os.path.join(attack_root, str(clean_tensor_rel)) if clean_tensor_rel else None,
+                "adv_tensor_path": os.path.join(attack_root, str(adv_tensor_rel)) if adv_tensor_rel else None,
+                "clean_map_npy_path": os.path.join(attack_root, str(clean_map_npy_rel)) if clean_map_npy_rel else None,
+                "adv_map_npy_path": os.path.join(attack_root, str(adv_map_npy_rel)) if adv_map_npy_rel else None,
                 "target_label": int(target_label),
             }
         )
@@ -160,6 +168,7 @@ def build_curves_for_variant(
     l_steps,
     gap,
     batch_size,
+    precomputed_heatmap=None,
 ):
     w, h = image.size
     resize = Resize((h, w))
@@ -167,7 +176,12 @@ def build_curves_for_variant(
     target_text_embedding = zero_shot_weights[:, target_label].unsqueeze(0)
     target_texts = [IMAGENET_CLASSNAMES[target_label]]
 
-    heatmap = explainer.generate_hm(method, image, target_text_embedding, target_texts, resize).detach().cpu().numpy()
+    if precomputed_heatmap is not None:
+        heatmap = np.asarray(precomputed_heatmap, dtype=np.float32)
+        if heatmap.ndim == 3:
+            heatmap = heatmap[..., 0]
+    else:
+        heatmap = explainer.generate_hm(method, image, target_text_embedding, target_texts, resize).detach().cpu().numpy()
 
     original_tensor = normalize_only(image).unsqueeze(0).to(device)
     original_acc, original_cos = metrics_for_batch(
@@ -221,6 +235,15 @@ def build_curves_for_variant(
         "ins_acc": np.concatenate(([black_acc[0]], ins_acc)),
         "ins_cos": np.concatenate(([black_cos[0]], ins_cos)),
     }
+
+
+def load_image_from_tensor_or_png(tensor_path, png_path):
+    if tensor_path and os.path.exists(tensor_path):
+        arr = np.load(tensor_path).astype(np.float32)
+        if arr.ndim == 3 and arr.shape[-1] == 3:
+            arr = np.clip(arr, 0.0, 1.0)
+            return Image.fromarray((arr * 255.0).astype(np.uint8))
+    return Image.open(png_path).convert("RGB")
 
 
 def plot_variant_figure(title, x_del, x_ins, del_acc, del_cos, ins_acc, ins_cos, out_path):
@@ -311,12 +334,27 @@ def main():
 
     for entry in tqdm(entries, desc="Evaluating deletion/insertion"):
         try:
-            clean_img = Image.open(entry["clean_path"]).convert("RGB")
-            adv_img = Image.open(entry["adv_path"]).convert("RGB")
+            clean_img = load_image_from_tensor_or_png(entry.get("clean_tensor_path"), entry["clean_path"])
+            adv_img = load_image_from_tensor_or_png(entry.get("adv_tensor_path"), entry["adv_path"])
         except Exception:
             continue
 
         target_label = int(entry["target_label"])
+
+        clean_map = None
+        adv_map = None
+        clean_map_path = entry.get("clean_map_npy_path")
+        adv_map_path = entry.get("adv_map_npy_path")
+        if clean_map_path and os.path.exists(clean_map_path):
+            try:
+                clean_map = np.load(clean_map_path)
+            except Exception:
+                clean_map = None
+        if adv_map_path and os.path.exists(adv_map_path):
+            try:
+                adv_map = np.load(adv_map_path)
+            except Exception:
+                adv_map = None
 
         try:
             clean_curves = build_curves_for_variant(
@@ -331,6 +369,7 @@ def main():
                 l_steps=args.L,
                 gap=args.gap,
                 batch_size=args.batch_size,
+                precomputed_heatmap=clean_map,
             )
             adv_curves = build_curves_for_variant(
                 image=adv_img,
@@ -344,6 +383,7 @@ def main():
                 l_steps=args.L,
                 gap=args.gap,
                 batch_size=args.batch_size,
+                precomputed_heatmap=adv_map,
             )
         except Exception:
             continue
