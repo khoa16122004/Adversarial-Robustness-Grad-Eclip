@@ -1,4 +1,6 @@
 import time
+import json
+import os
 import torch
 import Game_MM_CLIP.clip as mm_clip
 import cv2
@@ -34,3 +36,60 @@ def visualize(hmap, raw_image, resize):
     color = cv2.cvtColor(color, cv2.COLOR_BGR2RGB)
     c_ret = np.clip(image * (1 - 0.5) + color * 0.5, 0, 255).astype(np.uint8)
     return c_ret
+
+def load_imagenet_label_map(index_json):
+    with open(index_json, "r", encoding="utf-8") as f:
+        class_dict = json.load(f)
+
+    if not isinstance(class_dict, dict) or len(class_dict) == 0:
+        raise ValueError(f"Invalid label json format: {index_json}")
+
+    sample_key = next(iter(class_dict.keys()))
+    folder_to_label = {}
+
+    if str(sample_key).isdigit():
+        # Format: {"0": ["n01440764", "tench"], ...}
+        for label_str, values in class_dict.items():
+            if not isinstance(values, list) or len(values) < 1:
+                continue
+            folder_to_label[str(values[0])] = int(label_str)
+        return folder_to_label
+
+    # Format: {"n01440764": [0, "tench"], ...}
+    for wnid, values in class_dict.items():
+        if isinstance(values, list) and len(values) > 0:
+            folder_to_label[str(wnid)] = int(values[0])
+        elif isinstance(values, int):
+            folder_to_label[str(wnid)] = int(values)
+
+    if not folder_to_label:
+        raise ValueError(f"Could not parse label mapping from: {index_json}")
+
+    return folder_to_label
+
+
+def collect_image_items(data_path, folder_to_label, max_images=None):
+    items = []
+    for folder in sorted(os.listdir(data_path)):
+        folder_path = os.path.join(data_path, folder)
+        if not os.path.isdir(folder_path):
+            continue
+        if folder not in folder_to_label:
+            continue
+
+        gt_label = folder_to_label[folder]
+        for name in sorted(os.listdir(folder_path)):
+            image_path = os.path.join(folder_path, name)
+            if os.path.isfile(image_path):
+                rel_path = os.path.relpath(image_path, data_path).replace("\\", "/")
+                items.append((image_path, rel_path, folder, gt_label))
+                if max_images is not None and len(items) >= max_images:
+                    return items
+    return items
+
+
+def batched(sequence, batch_size):
+    for start in range(0, len(sequence), batch_size):
+        yield sequence[start : start + batch_size]
+ 
+
