@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import torchvision.transforms.functional as TF
 from PIL import Image
+from torchvision.transforms import Resize
 from tqdm import tqdm
 
 from clip_utils import build_zero_shot_classifier
@@ -68,13 +69,6 @@ def clip_normalization_stats(device):
     return mean, std
 
 
-def apply_model_resize(image_pil, model_input_resolution):
-    # Match CLIP preprocess spatial stage: resize shortest side then center-crop to model input.
-    resized = TF.resize(image_pil, model_input_resolution, interpolation=TF.InterpolationMode.BICUBIC)
-    resized = TF.center_crop(resized, [model_input_resolution, model_input_resolution])
-    return resized
-
-
 def pgd_minimize_similarity(
     clipmodel,
     image_pil,
@@ -112,7 +106,7 @@ def pgd_minimize_similarity(
         cosine = (image_feat @ text_feat.T).mean()
 
         grad = torch.autograd.grad(cosine, x_adv, retain_graph=False, create_graph=False)[0]
-        x_adv = x_adv - alpha_tensor * grad.sign()
+        x_adv = x_adv + alpha_tensor * grad.sign()
         x_adv = torch.max(torch.min(x_adv, x0 + eps_tensor), x0 - eps_tensor)
         x_adv = torch.max(torch.min(x_adv, upper), lower)
         x_adv = x_adv.detach()
@@ -178,6 +172,7 @@ def main():
         help="Class text used by PGD objective",
     )
     parser.add_argument("--max-images", type=int, default=None, help="Optional cap on images")
+    parser.add_argument("--resize-max-side", type=int, default=640, help="Resize long side guard for large images")
     parser.add_argument("--pgd-eps", type=float, default=8.0 / 255.0, help="PGD epsilon in pixel scale [0,1]")
     parser.add_argument("--pgd-alpha", type=float, default=2.0 / 255.0, help="PGD step size in pixel scale [0,1]")
     parser.add_argument("--pgd-steps", type=int, default=10, help="Number of PGD steps")
@@ -199,7 +194,6 @@ def main():
 
     clipmodel, preprocess = clip.load("ViT-B/16", device=device)
     clipmodel.eval()
-    model_input_resolution = int(clipmodel.visual.input_resolution)
     explainer = CLIPExplainRunner(clipmodel=clipmodel, preprocess=preprocess, device=device)
 
     zero_shot_weights = build_zero_shot_classifier(
@@ -221,7 +215,6 @@ def main():
         f"methods={','.join(methods)}",
         f"target={args.target}",
         f"attack_class={args.attack_class}",
-        f"model_input_resolution={model_input_resolution}",
         f"pgd=eps:{args.pgd_eps},alpha:{args.pgd_alpha},steps:{args.pgd_steps},random_start:{args.pgd_random_start}",
     ]
 
@@ -232,7 +225,10 @@ def main():
             summary_lines.append(f"skip\t{image_path}\terror={repr(exc)}")
             continue
 
-        clean_img = apply_model_resize(clean_img, model_input_resolution)
+        w, h = clean_img.size
+        if max(w, h) > args.resize_max_side:
+            scale = max(w, h) / float(args.resize_max_side)
+            clean_img = clean_img.resize((int(w / scale), int(h / scale)))
 
         clean_tensor = preprocess(clean_img).to(device).unsqueeze(0)
         with torch.no_grad():
@@ -268,12 +264,7 @@ def main():
             adv_pred_label = int(adv_probs.argmax(dim=-1).item())
 
         aw, ah = adv_img.size
-        if aw != model_input_resolution or ah != model_input_resolution:
-            adv_img = apply_model_resize(adv_img, model_input_resolution)
-            aw, ah = adv_img.size
-
-        # Heatmaps are generated in the same resized space used by CLIP preprocess.
-        resize = lambda hm: hm
+        resize = Resize((ah, aw))
 
         sample_id = f"{idx:05d}_{sanitize_name(folder)}_{sanitize_name(os.path.splitext(image_name)[0])}"
         sample_dir = os.path.join(args.output_dir, sample_id)
