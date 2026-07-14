@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 
+from bleach import clean
 import clip
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,7 +15,12 @@ from tqdm import tqdm
 from clip_utils import build_zero_shot_classifier
 from generate_emap import CLIPExplainRunner
 from imagenet_metadata import IMAGENET_CLASSNAMES, OPENAI_IMAGENET_TEMPLATES
+from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
+from torchvision.transforms.functional import InterpolationMode
 
+
+def _convert_image_to_rgb(image):
+    return image.convert("RGB")
 
 def load_imagenet_label_map(index_json_path):
     with open(index_json_path, "r", encoding="utf-8") as f:
@@ -217,6 +223,26 @@ def main():
         f"attack_class={args.attack_class}",
         f"pgd=eps:{args.pgd_eps},alpha:{args.pgd_alpha},steps:{args.pgd_steps},random_start:{args.pgd_random_start}",
     ]
+    
+    spatial_transform = Compose([
+        Resize(
+            size=224,
+            interpolation=InterpolationMode.BICUBIC,
+            antialias=True
+        ),
+        CenterCrop((224, 224)),
+        _convert_image_to_rgb,
+    ])
+
+    # Tensor transforms (operate on Tensor)
+    tensor_transform = Compose([
+        ToTensor(),
+        Normalize(
+            mean=(0.48145466, 0.4578275, 0.40821073),
+            std=(0.26862954, 0.26130258, 0.27577711)
+        ),
+    ])
+    
 
     for idx, (image_path, folder, image_name, gt_label) in enumerate(tqdm(image_items, desc="PGD map saving"), start=1):
         try:
@@ -225,11 +251,9 @@ def main():
             summary_lines.append(f"skip\t{image_path}\terror={repr(exc)}")
             continue
 
-        w, h = clean_img.size
-
-        clean_tensor = preprocess(clean_img).to(device).unsqueeze(0)
-        print(preprocess)
-        raise
+        clean_img = spatial_transform(clean_img)
+        clean_tensor = tensor_transform(clean_img).to(device).unsqueeze(0)
+        
         with torch.no_grad():
             clean_features = clipmodel.encode_image(clean_tensor)
             clean_logits = 100.0 * clean_features @ zero_shot_weights
@@ -255,15 +279,14 @@ def main():
             random_start=args.pgd_random_start,
         )
 
-        adv_tensor = preprocess(adv_img).to(device).unsqueeze(0)
+        adv_img = spatial_transform(adv_img)
+        adv_tensor = tensor_transform(adv_img).to(device).unsqueeze(0)
         with torch.no_grad():
             adv_features = clipmodel.encode_image(adv_tensor)
             adv_logits = 100.0 * adv_features @ zero_shot_weights
             adv_probs = adv_logits.softmax(dim=-1)
             adv_pred_label = int(adv_probs.argmax(dim=-1).item())
 
-        aw, ah = adv_img.size
-        resize = Resize((ah, aw))
 
         sample_id = f"{idx:05d}_{sanitize_name(folder)}_{sanitize_name(os.path.splitext(image_name)[0])}"
         sample_dir = os.path.join(args.output_dir, sample_id)
