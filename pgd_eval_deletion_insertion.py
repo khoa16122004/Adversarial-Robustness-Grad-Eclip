@@ -285,18 +285,19 @@ def infer_gt_label(entry, clean_path, attack_root, folder_to_label):
     return None
 
 
-def mean_auc(x, y):
-    span = float(x[-1] - x[0])
-    if span <= 0.0:
-        return float(np.mean(y))
-    return float(np.trapz(y, x) / span)
+def step_mean(curve):
+    # Follow the paper formula: (1 / N_step) * sum_{n=1..N_step} score^(n).
+    # Our curves include a baseline at index 0 (x=0), so exclude it.
+    if curve.shape[0] <= 1:
+        return float(curve[0])
+    return float(np.mean(curve[1:]))
 
 
 def compute_scalar_scores(curves):
-    del_acc = mean_auc(curves["x_del"], curves["del_acc"])
-    del_cos = mean_auc(curves["x_del"], curves["del_cos"])
-    ins_acc = mean_auc(curves["x_ins"], curves["ins_acc"])
-    ins_cos = mean_auc(curves["x_ins"], curves["ins_cos"])
+    del_acc = step_mean(curves["del_acc"])
+    del_cos = step_mean(curves["del_cos"])
+    ins_acc = step_mean(curves["ins_acc"])
+    ins_cos = step_mean(curves["ins_cos"])
     return {
         "deletion": {"acc": del_acc, "cosine": del_cos},
         "insertion": {"acc": ins_acc, "cosine": ins_cos},
