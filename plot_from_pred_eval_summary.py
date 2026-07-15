@@ -89,6 +89,57 @@ def plot_multi_method_comparison(summary_methods, score_key, out_path):
     plt.close(fig)
 
 
+def plot_method_clean_adv_comparison(method, method_data, score_key, out_path):
+    x_del = method_data["x_del"]
+    x_ins = method_data["x_ins"]
+    clean = method_data["clean"]
+    adv = method_data["adv"]
+
+    if score_key == "cos":
+        clean_del = clean["deletion_cosine"]
+        clean_ins = clean["insertion_cosine"]
+        adv_del = adv["deletion_cosine"]
+        adv_ins = adv["insertion_cosine"]
+        y_label = "Cosine"
+    else:
+        clean_del = clean["deletion_accuracy"]
+        clean_ins = clean["insertion_accuracy"]
+        adv_del = adv["deletion_accuracy"]
+        adv_ins = adv["insertion_accuracy"]
+        y_label = "Accuracy"
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.8), dpi=140)
+
+    axes[0].plot(x_del, clean_del, marker="o", linewidth=2.2, markersize=4, label="Clean", color="#1f77b4")
+    axes[0].plot(x_del, adv_del, marker="o", linewidth=2.2, markersize=4, label="Adv", color="#d62728")
+    axes[0].set_title("Deletion")
+    axes[0].set_xlabel("Removed Pixel Ratio")
+    axes[0].set_ylabel(y_label)
+    axes[0].grid(True, alpha=0.25, linestyle="--")
+
+    axes[1].plot(x_ins, clean_ins, marker="o", linewidth=2.2, markersize=4, label="Clean", color="#1f77b4")
+    axes[1].plot(x_ins, adv_ins, marker="o", linewidth=2.2, markersize=4, label="Adv", color="#d62728")
+    axes[1].set_title("Insertion")
+    axes[1].set_xlabel("Inserted Pixel Ratio")
+    axes[1].set_ylabel(y_label)
+    axes[1].grid(True, alpha=0.25, linestyle="--")
+
+    if score_key == "acc":
+        axes[0].set_ylim(0.0, 1.0)
+        axes[1].set_ylim(0.0, 1.0)
+    else:
+        for ax in axes:
+            ax.relim()
+            ax.autoscale_view(scaley=True)
+            ax.margins(y=0.08)
+
+    axes[1].legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
+    plt.suptitle(f"{method} | Clean vs Adv ({y_label})", fontsize=13, fontweight="bold")
+    plt.tight_layout()
+    plt.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Regenerate 2 comparison charts (accuracy/cosine) from pred_eval summary JSON"
@@ -133,8 +184,17 @@ def main():
     plot_multi_method_comparison(summary_methods, "cos", cosine_path)
     plot_multi_method_comparison(summary_methods, "acc", acc_path)
 
+    per_method_dir = os.path.join(output_dir, f"{output_prefix}_per_method")
+    os.makedirs(per_method_dir, exist_ok=True)
+    for method, method_data in sorted(summary_methods.items()):
+        method_acc_path = os.path.join(per_method_dir, f"{method}_clean_vs_adv_acc.png")
+        method_cos_path = os.path.join(per_method_dir, f"{method}_clean_vs_adv_cosine.png")
+        plot_method_clean_adv_comparison(method, method_data, "acc", method_acc_path)
+        plot_method_clean_adv_comparison(method, method_data, "cos", method_cos_path)
+
     print(f"Saved comparison (cosine): {cosine_path}")
     print(f"Saved comparison (accuracy): {acc_path}")
+    print(f"Saved per-method clean-vs-adv charts in: {per_method_dir}")
 
 
 if __name__ == "__main__":
