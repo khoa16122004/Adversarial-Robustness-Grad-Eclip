@@ -209,12 +209,24 @@ def main():
     parser.add_argument("--pgd-steps", type=int, default=10, help="PGD iterations")
     parser.add_argument("--pgd-random-start", action="store_true", help="Enable random start")
     parser.add_argument("--explain-method", default="eclip", help="Explain method name used for clean/adv maps")
+    parser.add_argument(
+        "--explain-methods",
+        default=None,
+        help="Comma-separated explain methods to run in one attack pass (overrides --explain-method)",
+    )
     parser.add_argument("--save-ext", default=".png", help="Output extension (.png or .jpg)")
     parser.add_argument("--device", default=None, help="cuda or cpu")
     args = parser.parse_args()
 
     if args.pgd_steps < 1:
         raise ValueError("--pgd-steps must be >= 1")
+
+    if args.explain_methods:
+        explain_methods = [m.strip() for m in args.explain_methods.split(",") if m.strip()]
+    else:
+        explain_methods = [args.explain_method]
+    if not explain_methods:
+        raise ValueError("At least one explain method is required.")
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -244,6 +256,7 @@ def main():
         "samples_json": args.samples_json,
         "input_image_dir": args.input_image_dir,
         "output_dir": args.output_dir,
+        "explain_methods": explain_methods,
         "max_images": args.max_images,
         "pgd": {
             "eps": args.pgd_eps,
@@ -318,20 +331,6 @@ def main():
         txt_embedding = zero_shot_weights[:, pred_label].unsqueeze(0)
         txts = [IMAGENET_CLASSNAMES[pred_label]]
 
-        clean_hm = explainer.generate_hm(args.explain_method, clean_pil, txt_embedding, txts, map_resize)
-        adv_hm = explainer.generate_hm(args.explain_method, adv_pil, txt_embedding, txts, map_resize)
-
-        clean_hm_np = normalize_01(clean_hm.detach().cpu().numpy())
-        adv_hm_np = normalize_01(adv_hm.detach().cpu().numpy())
-
-        clean_map_img = heatmap_to_color_image(clean_hm_np)
-        adv_map_img = heatmap_to_color_image(adv_hm_np)
-
-        clean_map_path = os.path.join(map_dir, f"clean_{args.explain_method}.png")
-        adv_map_path = os.path.join(map_dir, f"adv_{args.explain_method}.png")
-        clean_map_img.save(clean_map_path)
-        adv_map_img.save(adv_map_path)
-
         clean_tensor_np = clean_pixel.squeeze(0).permute(1, 2, 0).detach().cpu().numpy().astype(np.float32)
         adv_tensor_np = adv_pixel.squeeze(0).permute(1, 2, 0).detach().cpu().numpy().astype(np.float32)
         clean_tensor_np = np.clip(clean_tensor_np, 0.0, 1.0)
@@ -339,24 +338,57 @@ def main():
 
         clean_tensor_path = os.path.join(sample_dir, "clean_tensor_01.npy")
         adv_tensor_path = os.path.join(sample_dir, "adv_tensor_01.npy")
-        clean_map_npy_path = os.path.join(map_dir, f"clean_{args.explain_method}.npy")
-        adv_map_npy_path = os.path.join(map_dir, f"adv_{args.explain_method}.npy")
 
         np.save(clean_tensor_path, clean_tensor_np)
         np.save(adv_tensor_path, adv_tensor_np)
-        np.save(clean_map_npy_path, clean_hm_np)
-        np.save(adv_map_npy_path, adv_hm_np)
+
+        clean_map_paths = {}
+        adv_map_paths = {}
+        clean_map_npy_paths = {}
+        adv_map_npy_paths = {}
+
+        for method in explain_methods:
+            clean_hm = explainer.generate_hm(method, clean_pil, txt_embedding, txts, map_resize)
+            adv_hm = explainer.generate_hm(method, adv_pil, txt_embedding, txts, map_resize)
+
+            clean_hm_np = normalize_01(clean_hm.detach().cpu().numpy())
+            adv_hm_np = normalize_01(adv_hm.detach().cpu().numpy())
+
+            clean_map_img = heatmap_to_color_image(clean_hm_np)
+            adv_map_img = heatmap_to_color_image(adv_hm_np)
+
+            clean_map_rel = f"{base_rel}/map/clean_{method}.png".replace("\\", "/")
+            adv_map_rel = f"{base_rel}/map/adv_{method}.png".replace("\\", "/")
+            clean_map_npy_rel = f"{base_rel}/map/clean_{method}.npy".replace("\\", "/")
+            adv_map_npy_rel = f"{base_rel}/map/adv_{method}.npy".replace("\\", "/")
+
+            clean_map_img.save(os.path.join(args.output_dir, clean_map_rel))
+            adv_map_img.save(os.path.join(args.output_dir, adv_map_rel))
+            np.save(os.path.join(args.output_dir, clean_map_npy_rel), clean_hm_np)
+            np.save(os.path.join(args.output_dir, adv_map_npy_rel), adv_hm_np)
+
+            clean_map_paths[method] = clean_map_rel
+            adv_map_paths[method] = adv_map_rel
+            clean_map_npy_paths[method] = clean_map_npy_rel
+            adv_map_npy_paths[method] = adv_map_npy_rel
+
+        default_method = explain_methods[0]
 
         sample_metadata = {
             "source_path": source_path,
             "relative_path": rel_path,
             "clean_image_path": clean_out_rel,
             "adv_image_path": adv_out_rel,
-            "explain_method": args.explain_method,
-            "clean_map_path": f"{base_rel}/map/clean_{args.explain_method}.png".replace("\\", "/"),
-            "adv_map_path": f"{base_rel}/map/adv_{args.explain_method}.png".replace("\\", "/"),
-            "clean_map_npy_path": f"{base_rel}/map/clean_{args.explain_method}.npy".replace("\\", "/"),
-            "adv_map_npy_path": f"{base_rel}/map/adv_{args.explain_method}.npy".replace("\\", "/"),
+            "explain_method": default_method,
+            "explain_methods": explain_methods,
+            "clean_map_path": clean_map_paths[default_method],
+            "adv_map_path": adv_map_paths[default_method],
+            "clean_map_npy_path": clean_map_npy_paths[default_method],
+            "adv_map_npy_path": adv_map_npy_paths[default_method],
+            "clean_map_paths": clean_map_paths,
+            "adv_map_paths": adv_map_paths,
+            "clean_map_npy_paths": clean_map_npy_paths,
+            "adv_map_npy_paths": adv_map_npy_paths,
             "clean_tensor_01_path": f"{base_rel}/clean_tensor_01.npy".replace("\\", "/"),
             "adv_tensor_01_path": f"{base_rel}/adv_tensor_01.npy".replace("\\", "/"),
             "from_pred_label": pred_label,
