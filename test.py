@@ -356,7 +356,6 @@ def plot_single_method_curves(method, clean_mean, adv_mean, x_del, x_ins, out_pa
     axes[0, 0].set_title("Clean - Deletion")
     axes[0, 0].set_xlabel("Removed Pixel Ratio")
     axes[0, 0].set_ylabel("Score")
-    axes[0, 0].set_ylim(0.0, 1.0)
     axes[0, 0].grid(True, alpha=0.3)
 
     axes[0, 1].plot(x_ins, clean_mean["ins_acc"], marker="o", label="Insertion Acc")
@@ -364,7 +363,6 @@ def plot_single_method_curves(method, clean_mean, adv_mean, x_del, x_ins, out_pa
     axes[0, 1].set_title("Clean - Insertion")
     axes[0, 1].set_xlabel("Inserted Pixel Ratio")
     axes[0, 1].set_ylabel("Score")
-    axes[0, 1].set_ylim(0.0, 1.0)
     axes[0, 1].grid(True, alpha=0.3)
 
     axes[1, 0].plot(x_del, adv_mean["del_acc"], marker="o", label="Deletion Acc")
@@ -372,7 +370,6 @@ def plot_single_method_curves(method, clean_mean, adv_mean, x_del, x_ins, out_pa
     axes[1, 0].set_title("Adv - Deletion")
     axes[1, 0].set_xlabel("Removed Pixel Ratio")
     axes[1, 0].set_ylabel("Score")
-    axes[1, 0].set_ylim(0.0, 1.0)
     axes[1, 0].grid(True, alpha=0.3)
 
     axes[1, 1].plot(x_ins, adv_mean["ins_acc"], marker="o", label="Insertion Acc")
@@ -380,7 +377,6 @@ def plot_single_method_curves(method, clean_mean, adv_mean, x_del, x_ins, out_pa
     axes[1, 1].set_title("Adv - Insertion")
     axes[1, 1].set_xlabel("Inserted Pixel Ratio")
     axes[1, 1].set_ylabel("Score")
-    axes[1, 1].set_ylim(0.0, 1.0)
     axes[1, 1].grid(True, alpha=0.3)
 
     for ax in axes.flatten():
@@ -431,8 +427,13 @@ def plot_multi_method_comparison(results_by_method, score_key, out_path):
     y_label = "Cosine" if score_key == "cos" else "Accuracy"
     for ax in axes.flatten():
         ax.set_ylabel(y_label)
-        ax.set_ylim(0.0, 1.0)
         ax.grid(True, alpha=0.25, linestyle="--")
+        if score_key == "acc":
+            ax.set_ylim(0.0, 1.0)
+        else:
+            ax.relim()
+            ax.autoscale_view(scaley=True)
+            ax.margins(y=0.08)
 
     handles, labels = axes[1, 1].get_legend_handles_labels()
     fig.legend(handles, labels, loc="center left", bbox_to_anchor=(0.99, 0.5), frameon=False, title="Methods")
