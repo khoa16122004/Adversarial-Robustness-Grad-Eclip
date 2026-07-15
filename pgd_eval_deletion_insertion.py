@@ -15,37 +15,6 @@ from generate_emap import CLIPExplainRunner
 from imagenet_metadata import IMAGENET_CLASSNAMES, OPENAI_IMAGENET_TEMPLATES
 
 
-def load_imagenet_label_map(index_json_path):
-    with open(index_json_path, "r", encoding="utf-8") as f:
-        class_dict = json.load(f)
-
-    if not isinstance(class_dict, dict) or len(class_dict) == 0:
-        raise ValueError(f"Invalid label json format: {index_json_path}")
-
-    sample_key = next(iter(class_dict.keys()))
-    folder_to_label = {}
-
-    # Format A: imagenet_class_index.json -> {"0": ["n01440764", "tench"], ...}
-    if str(sample_key).isdigit():
-        for label_str, values in class_dict.items():
-            if not isinstance(values, list) or len(values) < 1:
-                continue
-            folder_to_label[str(values[0])] = int(label_str)
-        return folder_to_label
-
-    # Format B: imgnet1k_label.json -> {"n01440764": [0, "tench"], ...}
-    for wnid, values in class_dict.items():
-        if isinstance(values, list) and len(values) > 0:
-            folder_to_label[str(wnid)] = int(values[0])
-        elif isinstance(values, int):
-            folder_to_label[str(wnid)] = int(values)
-
-    if not folder_to_label:
-        raise ValueError(f"Could not parse label mapping from: {index_json_path}")
-
-    return folder_to_label
-
-
 def make_grids(h, w):
     shifts_x = torch.arange(0, w, 1)
     shifts_y = torch.arange(0, h, 1)
@@ -161,9 +130,10 @@ def find_sample_entries(attack_root):
         adv_tensor_rel = meta.get("adv_tensor_01_path")
         clean_map_npy_rel = meta.get("clean_map_npy_path")
         adv_map_npy_rel = meta.get("adv_map_npy_path")
-        pred_label = meta.get("from_pred_label")
+        clean_pred_label = meta.get("from_pred_label")
+        adv_pred_label = meta.get("to_pred_label")
 
-        if clean_rel is None or adv_rel is None or pred_label is None:
+        if clean_rel is None or adv_rel is None or clean_pred_label is None:
             continue
 
         clean_path = os.path.join(attack_root, str(clean_rel))
@@ -180,7 +150,8 @@ def find_sample_entries(attack_root):
                 "adv_tensor_path": os.path.join(attack_root, str(adv_tensor_rel)) if adv_tensor_rel else None,
                 "clean_map_npy_path": os.path.join(attack_root, str(clean_map_npy_rel)) if clean_map_npy_rel else None,
                 "adv_map_npy_path": os.path.join(attack_root, str(adv_map_npy_rel)) if adv_map_npy_rel else None,
-                "pred_label": int(pred_label),
+                "clean_pred_label": int(clean_pred_label),
+                "adv_pred_label": int(adv_pred_label) if adv_pred_label is not None else int(clean_pred_label),
                 "relative_path": meta.get("relative_path"),
             }
         )
@@ -269,22 +240,6 @@ def build_curves_for_variant(
     }
 
 
-def infer_gt_label(entry, clean_path, attack_root, folder_to_label):
-    rel = entry.get("relative_path")
-    if rel:
-        rel_norm = str(rel).replace("\\", "/")
-        folder = rel_norm.split("/")[0]
-        if folder in folder_to_label:
-            return int(folder_to_label[folder])
-
-    rel_to_root = os.path.relpath(clean_path, attack_root).replace("\\", "/")
-    # path like n01440764/xxxx/clean_image.png
-    folder = rel_to_root.split("/")[0]
-    if folder in folder_to_label:
-        return int(folder_to_label[folder])
-    return None
-
-
 def step_mean(curve):
     # Follow the paper formula: (1 / N_step) * sum_{n=1..N_step} score^(n).
     # Our curves include a baseline at index 0 (x=0), so exclude it.
@@ -339,7 +294,7 @@ def format_two(v1, v2):
 
 def print_summary_table(clean_res, adv_res):
     header = (
-        "split | metric | GT(cos/acc) | Pred(cos/acc)"
+        "split | metric | Pred(cos/acc)"
     )
     print("=" * len(header))
     print(header)
@@ -347,11 +302,9 @@ def print_summary_table(clean_res, adv_res):
 
     for split_name, split_res in [("clean", clean_res), ("adv", adv_res)]:
         for metric_name in ["deletion", "insertion", "imd"]:
-            gt_val = split_res["gt"][metric_name]
-            pred_val = split_res["pred"][metric_name]
+            pred_val = split_res[metric_name]
             print(
                 f"{split_name:5s} | {metric_name:9s} | "
-                f"{format_two(gt_val['cosine'], gt_val['acc']):>17s} | "
                 f"{format_two(pred_val['cosine'], pred_val['acc']):>17s}"
             )
     print("=" * len(header))
@@ -369,16 +322,16 @@ def load_image_from_tensor_or_png(tensor_path, png_path):
 def plot_variant_figure(title, x_del, x_ins, del_acc, del_cos, ins_acc, ins_cos, out_path):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), dpi=120)
 
-    axes[0].plot(x_del, del_acc, marker="o", label="Accuracy@orig_class")
-    axes[0].plot(x_del, del_cos, marker="o", label="Cosine@orig_class_text")
+    axes[0].plot(x_del, del_acc, marker="o", label="Accuracy@pred_class")
+    axes[0].plot(x_del, del_cos, marker="o", label="Cosine@pred_class_text")
     axes[0].set_title("Deletion")
     axes[0].set_xlabel("Removed Pixel Ratio")
     axes[0].set_ylabel("Score")
     axes[0].set_ylim(0.0, 1.0)
     axes[0].grid(True, alpha=0.3)
 
-    axes[1].plot(x_ins, ins_acc, marker="o", label="Accuracy@orig_class")
-    axes[1].plot(x_ins, ins_cos, marker="o", label="Cosine@orig_class_text")
+    axes[1].plot(x_ins, ins_acc, marker="o", label="Accuracy@pred_class")
+    axes[1].plot(x_ins, ins_cos, marker="o", label="Cosine@pred_class_text")
     axes[1].set_title("Insertion")
     axes[1].set_xlabel("Inserted Pixel Ratio")
     axes[1].set_ylabel("Score")
@@ -404,11 +357,6 @@ def main():
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size for metric inference")
     parser.add_argument("--max-samples", type=int, default=None, help="Optional cap on sample folders")
     parser.add_argument("--output-prefix", default="pgd_eval", help="Prefix for figure/json outputs")
-    parser.add_argument(
-        "--index-json",
-        default="imgnet1k_label.json",
-        help="Path to ImageNet label map json for GT labels",
-    )
     parser.add_argument("--device", default=None, help="cuda or cpu")
     args = parser.parse_args()
 
@@ -424,8 +372,6 @@ def main():
         entries = entries[: args.max_samples]
     if not entries:
         raise ValueError("No valid sample folders found under attack root.")
-
-    folder_to_label = load_imagenet_label_map(args.index_json)
 
     clip_model, preprocess = clip.load(args.clip_model, device=device)
     clip_model.eval()
@@ -459,9 +405,9 @@ def main():
     x_ins = None
     count = 0
 
-    # Scalar metrics table buckets
-    clean_table = {"gt": init_metrics_bucket(), "pred": init_metrics_bucket()}
-    adv_table = {"gt": init_metrics_bucket(), "pred": init_metrics_bucket()}
+    # Scalar metrics table buckets (prediction-only)
+    clean_table = init_metrics_bucket()
+    adv_table = init_metrics_bucket()
 
     for entry in tqdm(entries, desc="Evaluating deletion/insertion"):
         try:
@@ -470,10 +416,8 @@ def main():
         except Exception:
             continue
 
-        pred_label = int(entry["pred_label"])
-        gt_label = infer_gt_label(entry, entry["clean_path"], args.attack_root, folder_to_label)
-        if gt_label is None:
-            continue
+        clean_pred_label = int(entry["clean_pred_label"])
+        adv_pred_label = int(entry["adv_pred_label"])
 
         clean_map = None
         adv_map = None
@@ -491,10 +435,9 @@ def main():
                 adv_map = None
 
         try:
-            # Pred-target branch (can reuse precomputed maps from attack stage)
             clean_curves_pred = build_curves_for_variant(
                 image=clean_img,
-                target_label=pred_label,
+                target_label=clean_pred_label,
                 method=args.method,
                 clip_model=clip_model,
                 explainer=explainer,
@@ -508,7 +451,7 @@ def main():
             )
             adv_curves_pred = build_curves_for_variant(
                 image=adv_img,
-                target_label=pred_label,
+                target_label=adv_pred_label,
                 method=args.method,
                 clip_model=clip_model,
                 explainer=explainer,
@@ -518,37 +461,7 @@ def main():
                 l_steps=args.L,
                 gap=args.gap,
                 batch_size=args.batch_size,
-                precomputed_heatmap=adv_map,
-            )
-
-            # GT-target branch (must generate GT heatmaps)
-            clean_curves_gt = build_curves_for_variant(
-                image=clean_img,
-                target_label=gt_label,
-                method=args.method,
-                clip_model=clip_model,
-                explainer=explainer,
-                zero_shot_weights=zero_shot_weights,
-                normalize_only=normalize_only,
-                device=device,
-                l_steps=args.L,
-                gap=args.gap,
-                batch_size=args.batch_size,
-                precomputed_heatmap=None,
-            )
-            adv_curves_gt = build_curves_for_variant(
-                image=adv_img,
-                target_label=gt_label,
-                method=args.method,
-                clip_model=clip_model,
-                explainer=explainer,
-                zero_shot_weights=zero_shot_weights,
-                normalize_only=normalize_only,
-                device=device,
-                l_steps=args.L,
-                gap=args.gap,
-                batch_size=args.batch_size,
-                precomputed_heatmap=None,
+                precomputed_heatmap=adv_map if adv_pred_label == clean_pred_label else None,
             )
         except Exception:
             continue
@@ -566,7 +479,7 @@ def main():
             adv_ins_acc_sum = np.zeros_like(adv_curves_pred["ins_acc"], dtype=np.float64)
             adv_ins_cos_sum = np.zeros_like(adv_curves_pred["ins_cos"], dtype=np.float64)
 
-        # Keep original mean curves as prediction-target curves.
+        # Prediction-target curves.
         clean_del_acc_sum += clean_curves_pred["del_acc"]
         clean_del_cos_sum += clean_curves_pred["del_cos"]
         clean_ins_acc_sum += clean_curves_pred["ins_acc"]
@@ -578,14 +491,10 @@ def main():
         adv_ins_cos_sum += adv_curves_pred["ins_cos"]
 
         clean_scores_pred = compute_scalar_scores(clean_curves_pred)
-        clean_scores_gt = compute_scalar_scores(clean_curves_gt)
         adv_scores_pred = compute_scalar_scores(adv_curves_pred)
-        adv_scores_gt = compute_scalar_scores(adv_curves_gt)
 
-        add_metrics(clean_table["pred"], clean_scores_pred)
-        add_metrics(clean_table["gt"], clean_scores_gt)
-        add_metrics(adv_table["pred"], adv_scores_pred)
-        add_metrics(adv_table["gt"], adv_scores_gt)
+        add_metrics(clean_table, clean_scores_pred)
+        add_metrics(adv_table, adv_scores_pred)
 
         count += 1
 
@@ -602,14 +511,8 @@ def main():
     adv_ins_acc_mean = adv_ins_acc_sum / count
     adv_ins_cos_mean = adv_ins_cos_sum / count
 
-    clean_table_mean = {
-        "gt": finalize_metrics(clean_table["gt"]),
-        "pred": finalize_metrics(clean_table["pred"]),
-    }
-    adv_table_mean = {
-        "gt": finalize_metrics(adv_table["gt"]),
-        "pred": finalize_metrics(adv_table["pred"]),
-    }
+    clean_table_mean = finalize_metrics(clean_table)
+    adv_table_mean = finalize_metrics(adv_table)
 
     clean_fig_path = os.path.join(args.attack_root, f"{args.output_prefix}_clean.png")
     adv_fig_path = os.path.join(args.attack_root, f"{args.output_prefix}_adv.png")
@@ -657,6 +560,7 @@ def main():
         },
         "table_metrics": {
             "columns": ["cosine", "acc"],
+            "target": "pred",
             "clean": clean_table_mean,
             "adv": adv_table_mean,
         },

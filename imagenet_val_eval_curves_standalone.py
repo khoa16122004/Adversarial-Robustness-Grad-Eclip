@@ -1,5 +1,4 @@
 import argparse
-import json
 import os
 
 import clip
@@ -104,50 +103,16 @@ def class_probabilities(clipmodel, zero_shot_weights, image_batch, class_idx, ba
     return probs[:, class_idx].detach().cpu().numpy()
 
 
-def load_imagenet_label_map(index_json_path):
-    with open(index_json_path, "r", encoding="utf-8") as f:
-        class_dict = json.load(f)
-
-    if not isinstance(class_dict, dict) or len(class_dict) == 0:
-        raise ValueError(f"Invalid label json format: {index_json_path}")
-
-    sample_key = next(iter(class_dict.keys()))
-    folder_to_label = {}
-
-    # Format A: imagenet_class_index.json -> {"0": ["n01440764", "tench"], ...}
-    if str(sample_key).isdigit():
-        for label_str, values in class_dict.items():
-            if not isinstance(values, list) or len(values) < 1:
-                continue
-            folder_to_label[str(values[0])] = int(label_str)
-        return folder_to_label
-
-    # Format B: imgnet1k_label.json -> {"n01440764": [0, "tench"], ...}
-    for wnid, values in class_dict.items():
-        if isinstance(values, list) and len(values) > 0:
-            folder_to_label[str(wnid)] = int(values[0])
-        elif isinstance(values, int):
-            folder_to_label[str(wnid)] = int(values)
-
-    if not folder_to_label:
-        raise ValueError(f"Could not parse label mapping from: {index_json_path}")
-
-    return folder_to_label
-
-
-def collect_image_items(data_path, folder_to_label, max_images=None):
+def collect_image_items(data_path, max_images=None):
     items = []
     for folder in sorted(os.listdir(data_path)):
         folder_path = os.path.join(data_path, folder)
         if not os.path.isdir(folder_path):
             continue
-        if folder not in folder_to_label:
-            continue
-        label = folder_to_label[folder]
         for name in sorted(os.listdir(folder_path)):
             image_path = os.path.join(folder_path, name)
             if os.path.isfile(image_path):
-                items.append((image_path, label))
+                items.append(image_path)
                 if max_images is not None and len(items) >= max_images:
                     return items
     return items
@@ -211,7 +176,7 @@ def evaluate_setting(
     x_del = None
     x_ins = None
 
-    for image_path, gt_label in tqdm(image_items, desc=f"Evaluating ({setting})"):
+    for image_path in tqdm(image_items, desc=f"Evaluating ({setting})"):
         try:
             img = Image.open(image_path).convert("RGB")
         except Exception:
@@ -231,8 +196,8 @@ def evaluate_setting(
             probs = logits.softmax(dim=-1)
             pred_label = int(probs.argmax(dim=-1).item())
 
-        explain_label = gt_label if args.target == "gt" else pred_label
-        eval_label = gt_label if args.eval_class == "gt" else pred_label
+        explain_label = pred_label
+        eval_label = pred_label
 
         original_prob = float(probs[0, eval_label].detach().cpu().item())
         txt_embedding = zero_shot_weights[:, explain_label].unsqueeze(0)
@@ -285,7 +250,6 @@ def evaluate_setting(
 def main():
     parser = argparse.ArgumentParser(description="Standalone ImageNet-val deletion/insertion curves")
     parser.add_argument("--data-path", required=True, help="Path to ImageNet val folder")
-    parser.add_argument("--index-json", default="imgnet1k_label.json", help="Path to imagenet_class_index.json")
     parser.add_argument("--clip-model", default="ViT-B/16", help="CLIP model name for clip.load")
     parser.add_argument(
         "--settings",
@@ -298,8 +262,6 @@ def main():
         default="eclip,eclip-wo-ksim,game,maskclip,gradcam,rollout,surgery,m2ib,rise",
         help="Comma-separated explain methods",
     )
-    parser.add_argument("--target", choices=["gt", "pred"], default="gt", help="Class used to generate heatmap")
-    parser.add_argument("--eval-class", choices=["gt", "pred"], default="gt", help="Class whose probability is plotted")
     parser.add_argument("--max-images", type=int, default=None, help="Optional cap on images")
     parser.add_argument("--L", type=int, default=100, help="Total perturbation steps")
     parser.add_argument("--gap", type=int, default=10, help="Evaluate every N steps")
@@ -322,8 +284,7 @@ def main():
     if not settings:
         raise ValueError("No setting selected. Use --settings pretrained,random")
 
-    folder_to_label = load_imagenet_label_map(args.index_json)
-    image_items = collect_image_items(args.data_path, folder_to_label, max_images=args.max_images)
+    image_items = collect_image_items(args.data_path, max_images=args.max_images)
     if not image_items:
         raise ValueError("No image found for evaluation.")
 
@@ -344,8 +305,8 @@ def main():
         f"num_images_input={len(image_items)}",
         f"settings={','.join(settings)}",
         f"clip_model={args.clip_model}",
-        f"target={args.target}",
-        f"eval_class={args.eval_class}",
+        "target=pred",
+        "eval_class=pred",
     ]
 
     for row_idx, result in enumerate(results):
@@ -378,7 +339,7 @@ def main():
         axes[row_idx, 1].grid(True, alpha=0.3)
         axes[row_idx, 1].legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
 
-    plt.suptitle(f"ImageNet val | explain={args.target} | eval={args.eval_class}")
+    plt.suptitle("ImageNet val | explain=pred | eval=pred")
     plt.tight_layout()
     plt.savefig(args.output, bbox_inches="tight")
 
