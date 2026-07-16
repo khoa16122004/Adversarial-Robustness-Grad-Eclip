@@ -23,43 +23,6 @@ def setup_plot_style():
         plt.style.use("default")
 
 
-def load_imagenet_label_map(index_json_path):
-    with open(index_json_path, "r", encoding="utf-8") as f:
-        class_dict = json.load(f)
-
-    if not isinstance(class_dict, dict) or len(class_dict) == 0:
-        raise ValueError(f"Invalid label json format: {index_json_path}")
-
-    sample_key = next(iter(class_dict.keys()))
-    folder_to_label = {}
-
-    if str(sample_key).isdigit():
-        for label_str, values in class_dict.items():
-            if not isinstance(values, list) or len(values) < 1:
-                continue
-            folder_to_label[str(values[0])] = int(label_str)
-        return folder_to_label
-
-    for wnid, values in class_dict.items():
-        if isinstance(values, list) and len(values) > 0:
-            folder_to_label[str(wnid)] = int(values[0])
-        elif isinstance(values, int):
-            folder_to_label[str(wnid)] = int(values)
-
-    if not folder_to_label:
-        raise ValueError(f"Could not parse label mapping from: {index_json_path}")
-
-    return folder_to_label
-
-
-def infer_gt_label(entry, attack_root, folder_to_label):
-    rel = os.path.relpath(entry["clean_path"], attack_root).replace("\\", "/")
-    folder = rel.split("/")[0]
-    if folder in folder_to_label:
-        return int(folder_to_label[folder])
-    return None
-
-
 def make_grids(h, w):
     shifts_x = torch.arange(0, w, 1)
     shifts_y = torch.arange(0, h, 1)
@@ -334,7 +297,6 @@ def find_sample_entries(attack_root):
                 "adv_map_npy_paths": adv_map_npy_paths if isinstance(adv_map_npy_paths, dict) else None,
                 "clean_pred_label": int(clean_pred_label),
                 "adv_pred_label": int(adv_pred_label) if adv_pred_label is not None else int(clean_pred_label),
-                "gt_label": int(meta["gt_label"]) if meta.get("gt_label") is not None else None,
             }
         )
 
