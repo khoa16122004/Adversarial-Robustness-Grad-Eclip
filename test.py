@@ -372,58 +372,43 @@ def get_precomputed_map_path(entry, method, split, attack_root):
     return default_path
 
 
-def plot_single_method_curves(method, clean_mean, adv_mean, x_del, x_ins, out_path):
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10), dpi=120)
+def plot_split_curves(method, split_name, split_mean, x_del, x_ins, out_path):
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.8), dpi=120)
 
-    axes[0, 0].plot(x_del, clean_mean["del_pred_prob"], marker="o", label="Deletion Pred Prob")
-    axes[0, 0].plot(x_del, clean_mean["del_gt_prob"], marker="o", label="Deletion GT Prob")
-    axes[0, 0].set_title("Clean - Deletion")
-    axes[0, 0].set_xlabel("Removed Pixel Ratio")
-    axes[0, 0].set_ylabel("Score")
-    axes[0, 0].grid(True, alpha=0.3)
+    axes[0].plot(x_del, split_mean["del_pred_prob"], marker="o", label="Deletion Pred Prob")
+    axes[0].set_title("Deletion")
+    axes[0].set_xlabel("Removed Pixel Ratio")
+    axes[0].set_ylabel("Pred Prob")
+    axes[0].set_ylim(0.0, 1.0)
+    axes[0].grid(True, alpha=0.3)
 
-    axes[0, 1].plot(x_ins, clean_mean["ins_pred_prob"], marker="o", label="Insertion Pred Prob")
-    axes[0, 1].plot(x_ins, clean_mean["ins_gt_prob"], marker="o", label="Insertion GT Prob")
-    axes[0, 1].set_title("Clean - Insertion")
-    axes[0, 1].set_xlabel("Inserted Pixel Ratio")
-    axes[0, 1].set_ylabel("Score")
-    axes[0, 1].grid(True, alpha=0.3)
+    axes[1].plot(x_ins, split_mean["ins_pred_prob"], marker="o", label="Insertion Pred Prob")
+    axes[1].set_title("Insertion")
+    axes[1].set_xlabel("Inserted Pixel Ratio")
+    axes[1].set_ylabel("Pred Prob")
+    axes[1].set_ylim(0.0, 1.0)
+    axes[1].grid(True, alpha=0.3)
 
-    axes[1, 0].plot(x_del, adv_mean["del_pred_prob"], marker="o", label="Deletion Pred Prob")
-    axes[1, 0].plot(x_del, adv_mean["del_gt_prob"], marker="o", label="Deletion GT Prob")
-    axes[1, 0].set_title("Adv - Deletion")
-    axes[1, 0].set_xlabel("Removed Pixel Ratio")
-    axes[1, 0].set_ylabel("Score")
-    axes[1, 0].grid(True, alpha=0.3)
-
-    axes[1, 1].plot(x_ins, adv_mean["ins_pred_prob"], marker="o", label="Insertion Pred Prob")
-    axes[1, 1].plot(x_ins, adv_mean["ins_gt_prob"], marker="o", label="Insertion GT Prob")
-    axes[1, 1].set_title("Adv - Insertion")
-    axes[1, 1].set_xlabel("Inserted Pixel Ratio")
-    axes[1, 1].set_ylabel("Score")
-    axes[1, 1].grid(True, alpha=0.3)
-
-    for ax in axes.flatten():
+    for ax in axes:
         ax.legend(loc="best", frameon=False)
 
-    plt.suptitle(f"Pred/GT probability curves | method={method}")
+    plt.suptitle(f"{method} | {split_name} | pred probability")
     plt.tight_layout()
     plt.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
 
 
-def plot_multi_method_comparison(results_by_method, score_key, out_path):
+def plot_multi_method_comparison(results_by_method, split_name, out_path):
     methods = list(results_by_method.keys())
     cmap = plt.get_cmap("tab10")
     colors = {m: cmap(i % 10) for i, m in enumerate(methods)}
 
-    fig, axes = plt.subplots(2, 2, figsize=(16, 10), dpi=140, sharex="col")
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5), dpi=140)
 
     for method, result in results_by_method.items():
         x_del = result["x_del"]
         x_ins = result["x_ins"]
-        clean = result["clean_mean"]
-        adv = result["adv_mean"]
+        split = result[f"{split_name}_mean"]
 
         style = {
             "linewidth": 2.0,
@@ -433,30 +418,23 @@ def plot_multi_method_comparison(results_by_method, score_key, out_path):
             "color": colors[method],
             "label": method,
         }
-        axes[0, 0].plot(x_del, clean[f"del_{score_key}"], **style)
-        axes[0, 1].plot(x_ins, clean[f"ins_{score_key}"], **style)
-        axes[1, 0].plot(x_del, adv[f"del_{score_key}"], **style)
-        axes[1, 1].plot(x_ins, adv[f"ins_{score_key}"], **style)
+        axes[0].plot(x_del, split["del_pred_prob"], **style)
+        axes[1].plot(x_ins, split["ins_pred_prob"], **style)
 
-    axes[0, 0].set_title("Clean - Deletion")
-    axes[0, 1].set_title("Clean - Insertion")
-    axes[1, 0].set_title("Adv - Deletion")
-    axes[1, 1].set_title("Adv - Insertion")
+    axes[0].set_title(f"{split_name.capitalize()} - Deletion")
+    axes[1].set_title(f"{split_name.capitalize()} - Insertion")
 
-    axes[0, 0].set_xlabel("Removed Pixel Ratio")
-    axes[1, 0].set_xlabel("Removed Pixel Ratio")
-    axes[0, 1].set_xlabel("Inserted Pixel Ratio")
-    axes[1, 1].set_xlabel("Inserted Pixel Ratio")
+    axes[0].set_xlabel("Removed Pixel Ratio")
+    axes[1].set_xlabel("Inserted Pixel Ratio")
 
-    y_label = "Pred Prob" if score_key == "pred_prob" else "GT Prob"
-    for ax in axes.flatten():
-        ax.set_ylabel(y_label)
+    for ax in axes:
+        ax.set_ylabel("Pred Prob")
         ax.grid(True, alpha=0.25, linestyle="--")
         ax.set_ylim(0.0, 1.0)
 
-    handles, labels = axes[1, 1].get_legend_handles_labels()
+    handles, labels = axes[1].get_legend_handles_labels()
     fig.legend(handles, labels, loc="center left", bbox_to_anchor=(0.99, 0.5), frameon=False, title="Methods")
-    plt.suptitle(f"Pred/GT Prob Method Comparison ({y_label})", fontsize=14, fontweight="bold")
+    plt.suptitle(f"Method Comparison | {split_name.capitalize()} | Pred Prob", fontsize=14, fontweight="bold")
     plt.tight_layout(rect=[0.0, 0.0, 0.88, 0.96])
     plt.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
@@ -467,59 +445,39 @@ def curve_auc(x, y):
 
 
 def plot_sample_auc_panels(method, sample_folder, clean_curves, adv_curves, out_name):
-    fig, axes = plt.subplots(2, 2, figsize=(8, 8), dpi=120)
-    panels = [
-        (
-            axes[0, 0],
-            clean_curves["x_del"],
-            clean_curves["del_pred_prob"],
-            clean_curves["del_gt_prob"],
-            "Deletion",
-        ),
-        (
-            axes[0, 1],
-            clean_curves["x_ins"],
-            clean_curves["ins_pred_prob"],
-            clean_curves["ins_gt_prob"],
-            "Insertion",
-        ),
-        (
-            axes[1, 0],
-            adv_curves["x_del"],
-            adv_curves["del_pred_prob"],
-            adv_curves["del_gt_prob"],
-            "Deletion",
-        ),
-        (
-            axes[1, 1],
-            adv_curves["x_ins"],
-            adv_curves["ins_pred_prob"],
-            adv_curves["ins_gt_prob"],
-            "Insertion",
-        ),
-    ]
+    saved_paths = {}
+    split_curves = {
+        "clean": clean_curves,
+        "adv": adv_curves,
+    }
 
-    for ax, x, pred_y, gt_y, title in panels:
-        ax.plot(x, pred_y, color="#1f77b4", linewidth=1.5, label="pred")
-        ax.fill_between(x, pred_y, color="#1f77b4", alpha=0.25)
-        ax.plot(x, gt_y, color="#ff7f0e", linewidth=1.5, label="gt")
-        ax.fill_between(x, gt_y, color="#ff7f0e", alpha=0.20)
-        ax.set_title(title)
-        ax.set_xlim(0.0, 1.0)
-        ax.set_ylim(0.0, 1.0)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        pred_auc = curve_auc(x, pred_y)
-        gt_auc = curve_auc(x, gt_y)
-        ax.text(0.5, 0.56, f"Pred AUC={pred_auc:.3f}", ha="center", va="center", fontsize=11, transform=ax.transAxes)
-        ax.text(0.5, 0.44, f"GT AUC={gt_auc:.3f}", ha="center", va="center", fontsize=11, transform=ax.transAxes)
+    for split_name, curves in split_curves.items():
+        fig, axes = plt.subplots(1, 2, figsize=(8, 4), dpi=120)
+        panels = [
+            (axes[0], curves["x_del"], curves["del_pred_prob"], "Deletion"),
+            (axes[1], curves["x_ins"], curves["ins_pred_prob"], "Insertion"),
+        ]
 
-    plt.suptitle(f"{method} | pred/gt probability", fontsize=11)
-    plt.tight_layout()
-    out_path = os.path.join(sample_folder, out_name)
-    plt.savefig(out_path, bbox_inches="tight")
-    plt.close(fig)
-    return out_path
+        for ax, x, pred_y, title in panels:
+            ax.plot(x, pred_y, color="#1f77b4", linewidth=1.5)
+            ax.fill_between(x, pred_y, color="#1f77b4", alpha=0.30)
+            ax.set_title(title)
+            ax.set_xlim(0.0, 1.0)
+            ax.set_ylim(0.0, 1.0)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            pred_auc = curve_auc(x, pred_y)
+            ax.text(0.5, 0.5, f"AUC={pred_auc:.3f}", ha="center", va="center", fontsize=12, transform=ax.transAxes)
+
+        plt.suptitle(f"{method} | {split_name} | pred probability", fontsize=11)
+        plt.tight_layout()
+        split_out_name = f"{split_name}_{out_name}"
+        out_path = os.path.join(sample_folder, split_out_name)
+        plt.savefig(out_path, bbox_inches="tight")
+        plt.close(fig)
+        saved_paths[split_name] = out_path
+
+    return saved_paths
 
 
 def evaluate_method(method, args, entries, folder_to_label, clip_model, explainer, zero_shot_weights, normalize_only, device):
