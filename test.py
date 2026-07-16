@@ -576,7 +576,7 @@ def save_scalar_csv(path, rows):
     with open(path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["method", "split", "metric", "cosine", "acc", "num_samples_evaluated"],
+            fieldnames=["method", "split", "metric", "margin_prob", "acc", "num_samples_evaluated"],
         )
         writer.writeheader()
         writer.writerows(rows)
@@ -689,18 +689,18 @@ def main():
             "x_ins": result["x_ins"].tolist(),
             "clean": {
                 "deletion_accuracy": result["clean_mean"]["del_acc"].tolist(),
-                "deletion_cosine": result["clean_mean"]["del_cos"].tolist(),
+                "deletion_margin_prob": result["clean_mean"]["del_margin"].tolist(),
                 "insertion_accuracy": result["clean_mean"]["ins_acc"].tolist(),
-                "insertion_cosine": result["clean_mean"]["ins_cos"].tolist(),
+                "insertion_margin_prob": result["clean_mean"]["ins_margin"].tolist(),
             },
             "adv": {
                 "deletion_accuracy": result["adv_mean"]["del_acc"].tolist(),
-                "deletion_cosine": result["adv_mean"]["del_cos"].tolist(),
+                "deletion_margin_prob": result["adv_mean"]["del_margin"].tolist(),
                 "insertion_accuracy": result["adv_mean"]["ins_acc"].tolist(),
-                "insertion_cosine": result["adv_mean"]["ins_cos"].tolist(),
+                "insertion_margin_prob": result["adv_mean"]["ins_margin"].tolist(),
             },
             "table_metrics": {
-                "columns": ["cosine", "acc"],
+                "columns": ["margin_prob", "acc"],
                 "target": "pred",
                 "clean": result["clean_metrics"],
                 "adv": result["adv_metrics"],
@@ -719,19 +719,19 @@ def main():
                         "method": method,
                         "split": split_name,
                         "metric": metric_name,
-                        "cosine": vals["cosine"],
+                        "margin_prob": vals["margin_prob"],
                         "acc": vals["acc"],
                         "num_samples_evaluated": result["num_samples_evaluated"],
                     }
                 )
 
-    cosine_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_cosine.png")
+    margin_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_margin_prob.png")
     acc_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_acc.png")
-    plot_multi_method_comparison(results_by_method, "cos", cosine_comp_path)
+    plot_multi_method_comparison(results_by_method, "margin", margin_comp_path)
     plot_multi_method_comparison(results_by_method, "acc", acc_comp_path)
 
     summary["comparison_figures"] = {
-        "cosine": cosine_comp_path,
+        "margin_prob": margin_comp_path,
         "accuracy": acc_comp_path,
     }
 
@@ -744,7 +744,7 @@ def main():
 
     print(f"Saved summary: {summary_path}")
     print(f"Saved scalar csv: {scalar_csv_path}")
-    print(f"Saved comparison (cosine): {cosine_comp_path}")
+    print(f"Saved comparison (margin_prob): {margin_comp_path}")
     print(f"Saved comparison (accuracy): {acc_comp_path}")
 
 
