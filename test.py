@@ -626,9 +626,8 @@ def evaluate_method(method, args, entries, folder_to_label, clip_model, explaine
         except Exception:
             continue
         
-
+        print("Save: ", args.save_per_sample_plots)
         if args.save_per_sample_plots:
-            print('Khoa')
             sample_folder = os.path.dirname(entry["metadata_path"])
             sample_plot_name = f"{args.output_prefix}_{method}_sample_auc.png"
             try:
