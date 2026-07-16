@@ -440,14 +440,14 @@ def plot_multi_method_comparison(results_by_method, score_key, out_path):
 
 def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weights, normalize_only, device):
     clean_del_acc_sum = None
-    clean_del_cos_sum = None
+    clean_del_margin_sum = None
     clean_ins_acc_sum = None
-    clean_ins_cos_sum = None
+    clean_ins_margin_sum = None
 
     adv_del_acc_sum = None
-    adv_del_cos_sum = None
+    adv_del_margin_sum = None
     adv_ins_acc_sum = None
-    adv_ins_cos_sum = None
+    adv_ins_margin_sum = None
 
     x_del = None
     x_ins = None
@@ -521,24 +521,24 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
             x_ins = clean_curves["x_ins"]
 
             clean_del_acc_sum = np.zeros_like(clean_curves["del_acc"], dtype=np.float64)
-            clean_del_cos_sum = np.zeros_like(clean_curves["del_cos"], dtype=np.float64)
+            clean_del_margin_sum = np.zeros_like(clean_curves["del_margin"], dtype=np.float64)
             clean_ins_acc_sum = np.zeros_like(clean_curves["ins_acc"], dtype=np.float64)
-            clean_ins_cos_sum = np.zeros_like(clean_curves["ins_cos"], dtype=np.float64)
+            clean_ins_margin_sum = np.zeros_like(clean_curves["ins_margin"], dtype=np.float64)
 
             adv_del_acc_sum = np.zeros_like(adv_curves["del_acc"], dtype=np.float64)
-            adv_del_cos_sum = np.zeros_like(adv_curves["del_cos"], dtype=np.float64)
+            adv_del_margin_sum = np.zeros_like(adv_curves["del_margin"], dtype=np.float64)
             adv_ins_acc_sum = np.zeros_like(adv_curves["ins_acc"], dtype=np.float64)
-            adv_ins_cos_sum = np.zeros_like(adv_curves["ins_cos"], dtype=np.float64)
+            adv_ins_margin_sum = np.zeros_like(adv_curves["ins_margin"], dtype=np.float64)
 
         clean_del_acc_sum += clean_curves["del_acc"]
-        clean_del_cos_sum += clean_curves["del_cos"]
+        clean_del_margin_sum += clean_curves["del_margin"]
         clean_ins_acc_sum += clean_curves["ins_acc"]
-        clean_ins_cos_sum += clean_curves["ins_cos"]
+        clean_ins_margin_sum += clean_curves["ins_margin"]
 
         adv_del_acc_sum += adv_curves["del_acc"]
-        adv_del_cos_sum += adv_curves["del_cos"]
+        adv_del_margin_sum += adv_curves["del_margin"]
         adv_ins_acc_sum += adv_curves["ins_acc"]
-        adv_ins_cos_sum += adv_curves["ins_cos"]
+        adv_ins_margin_sum += adv_curves["ins_margin"]
 
         add_metrics(clean_table, compute_scalar_scores(clean_curves))
         add_metrics(adv_table, compute_scalar_scores(adv_curves))
@@ -549,15 +549,15 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
 
     clean_mean = {
         "del_acc": clean_del_acc_sum / count,
-        "del_cos": clean_del_cos_sum / count,
+        "del_margin": clean_del_margin_sum / count,
         "ins_acc": clean_ins_acc_sum / count,
-        "ins_cos": clean_ins_cos_sum / count,
+        "ins_margin": clean_ins_margin_sum / count,
     }
     adv_mean = {
         "del_acc": adv_del_acc_sum / count,
-        "del_cos": adv_del_cos_sum / count,
+        "del_margin": adv_del_margin_sum / count,
         "ins_acc": adv_ins_acc_sum / count,
-        "ins_cos": adv_ins_cos_sum / count,
+        "ins_margin": adv_ins_margin_sum / count,
     }
 
     return {
