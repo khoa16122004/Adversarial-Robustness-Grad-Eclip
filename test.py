@@ -480,16 +480,12 @@ def plot_sample_auc_panels(method, sample_folder, clean_curves, adv_curves, out_
     return saved_paths
 
 
-def evaluate_method(method, args, entries, folder_to_label, clip_model, explainer, zero_shot_weights, normalize_only, device):
+def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weights, normalize_only, device):
     clean_del_pred_prob_sum = None
-    clean_del_gt_prob_sum = None
     clean_ins_pred_prob_sum = None
-    clean_ins_gt_prob_sum = None
 
     adv_del_pred_prob_sum = None
-    adv_del_gt_prob_sum = None
     adv_ins_pred_prob_sum = None
-    adv_ins_gt_prob_sum = None
 
     x_del = None
     x_ins = None
@@ -499,12 +495,6 @@ def evaluate_method(method, args, entries, folder_to_label, clip_model, explaine
     adv_table = init_metrics_bucket()
 
     for entry in tqdm(entries, desc=f"Evaluating ({method})"):
-        gt_label = entry.get("gt_label")
-        if gt_label is None:
-            gt_label = infer_gt_label(entry, args.attack_root, folder_to_label)
-        if gt_label is None:
-            continue
-
         try:
             clean_img = load_image_from_tensor_or_png(entry.get("clean_tensor_path"), entry["clean_path"])
             adv_img = load_image_from_tensor_or_png(entry.get("adv_tensor_path"), entry["adv_path"])
@@ -537,7 +527,6 @@ def evaluate_method(method, args, entries, folder_to_label, clip_model, explaine
                 image=clean_img,
                 explain_label=clean_pred_label,
                 pred_label=clean_pred_label,
-                gt_label=gt_label,
                 method=method,
                 clip_model=clip_model,
                 explainer=explainer,
@@ -553,7 +542,6 @@ def evaluate_method(method, args, entries, folder_to_label, clip_model, explaine
                 image=adv_img,
                 explain_label=adv_pred_label,
                 pred_label=adv_pred_label,
-                gt_label=gt_label,
                 method=method,
                 clip_model=clip_model,
                 explainer=explainer,
@@ -568,19 +556,19 @@ def evaluate_method(method, args, entries, folder_to_label, clip_model, explaine
         except Exception:
             continue
         
-        print("Save: ", args.save_per_sample_plots)
         if args.save_per_sample_plots:
             sample_folder = os.path.dirname(entry["metadata_path"])
             sample_plot_name = f"{args.output_prefix}_{method}_sample_auc.png"
             try:
-                saved_path = plot_sample_auc_panels(
+                saved_paths = plot_sample_auc_panels(
                     method=method,
                     sample_folder=sample_folder,
                     clean_curves=clean_curves,
                     adv_curves=adv_curves,
                     out_name=sample_plot_name,
                 )
-                print(f"Saved sample AUC ({method}): {saved_path}")
+                print(f"Saved sample AUC clean ({method}): {saved_paths['clean']}")
+                print(f"Saved sample AUC adv ({method}): {saved_paths['adv']}")
             except Exception:
                 pass
 
@@ -589,24 +577,16 @@ def evaluate_method(method, args, entries, folder_to_label, clip_model, explaine
             x_ins = clean_curves["x_ins"]
 
             clean_del_pred_prob_sum = np.zeros_like(clean_curves["del_pred_prob"], dtype=np.float64)
-            clean_del_gt_prob_sum = np.zeros_like(clean_curves["del_gt_prob"], dtype=np.float64)
             clean_ins_pred_prob_sum = np.zeros_like(clean_curves["ins_pred_prob"], dtype=np.float64)
-            clean_ins_gt_prob_sum = np.zeros_like(clean_curves["ins_gt_prob"], dtype=np.float64)
 
             adv_del_pred_prob_sum = np.zeros_like(adv_curves["del_pred_prob"], dtype=np.float64)
-            adv_del_gt_prob_sum = np.zeros_like(adv_curves["del_gt_prob"], dtype=np.float64)
             adv_ins_pred_prob_sum = np.zeros_like(adv_curves["ins_pred_prob"], dtype=np.float64)
-            adv_ins_gt_prob_sum = np.zeros_like(adv_curves["ins_gt_prob"], dtype=np.float64)
 
         clean_del_pred_prob_sum += clean_curves["del_pred_prob"]
-        clean_del_gt_prob_sum += clean_curves["del_gt_prob"]
         clean_ins_pred_prob_sum += clean_curves["ins_pred_prob"]
-        clean_ins_gt_prob_sum += clean_curves["ins_gt_prob"]
 
         adv_del_pred_prob_sum += adv_curves["del_pred_prob"]
-        adv_del_gt_prob_sum += adv_curves["del_gt_prob"]
         adv_ins_pred_prob_sum += adv_curves["ins_pred_prob"]
-        adv_ins_gt_prob_sum += adv_curves["ins_gt_prob"]
 
         add_metrics(clean_table, compute_scalar_scores(clean_curves))
         add_metrics(adv_table, compute_scalar_scores(adv_curves))
@@ -617,15 +597,11 @@ def evaluate_method(method, args, entries, folder_to_label, clip_model, explaine
 
     clean_mean = {
         "del_pred_prob": clean_del_pred_prob_sum / count,
-        "del_gt_prob": clean_del_gt_prob_sum / count,
         "ins_pred_prob": clean_ins_pred_prob_sum / count,
-        "ins_gt_prob": clean_ins_gt_prob_sum / count,
     }
     adv_mean = {
         "del_pred_prob": adv_del_pred_prob_sum / count,
-        "del_gt_prob": adv_del_gt_prob_sum / count,
         "ins_pred_prob": adv_ins_pred_prob_sum / count,
-        "ins_gt_prob": adv_ins_gt_prob_sum / count,
     }
 
     return {
@@ -644,7 +620,7 @@ def save_scalar_csv(path, rows):
     with open(path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["method", "split", "metric", "pred_prob", "gt_prob", "num_samples_evaluated"],
+            fieldnames=["method", "split", "metric", "pred_prob", "num_samples_evaluated"],
         )
         writer.writeheader()
         writer.writerows(rows)
@@ -652,7 +628,7 @@ def save_scalar_csv(path, rows):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Deletion/insertion/IMD evaluation with pred and GT probabilities for PGD attack outputs"
+        description="Deletion/insertion/IMD evaluation with predicted-class probability for PGD attack outputs"
     )
     parser.add_argument("--attack-root", required=True, help="Folder produced by pgd_attack.py")
     parser.add_argument(
@@ -667,11 +643,6 @@ def main():
     parser.add_argument("--max-samples", type=int, default=None, help="Optional cap on sample folders")
     parser.add_argument("--device", default=None, help="cuda or cpu")
     parser.add_argument("--output-prefix", default="pred_eval", help="Prefix for summary outputs")
-    parser.add_argument(
-        "--label-map",
-        default="imgnet1k_label.json",
-        help="ImageNet class index JSON for inferring GT labels by folder",
-    )
     parser.add_argument(
         "--save-per-method-plots",
         action="store_true",
@@ -707,8 +678,6 @@ def main():
     if not methods:
         raise ValueError("No explain methods found.")
 
-    folder_to_label = load_imagenet_label_map(args.label_map)
-
     clip_model, preprocess = clip.load(args.clip_model, device=device)
     clip_model.eval()
     explainer = CLIPExplainRunner(clipmodel=clip_model, preprocess=preprocess, device=device)
@@ -732,7 +701,7 @@ def main():
     results_by_method = {}
     summary = {
         "attack_root": args.attack_root,
-        "target": "pred_and_gt_prob",
+        "target": "pred_prob",
         "clip_model": args.clip_model,
         "methods": {},
     }
@@ -743,7 +712,6 @@ def main():
             method=method,
             args=args,
             entries=entries,
-            folder_to_label=folder_to_label,
             clip_model=clip_model,
             explainer=explainer,
             zero_shot_weights=zero_shot_weights,
@@ -753,15 +721,25 @@ def main():
         results_by_method[method] = result
 
         clean_fig_path = None
+        adv_fig_path = None
         if args.save_per_method_plots:
-            clean_fig_path = os.path.join(args.attack_root, f"{args.output_prefix}_{method}_curves.png")
-            plot_single_method_curves(
+            clean_fig_path = os.path.join(args.attack_root, f"{args.output_prefix}_{method}_clean_curves.png")
+            adv_fig_path = os.path.join(args.attack_root, f"{args.output_prefix}_{method}_adv_curves.png")
+            plot_split_curves(
                 method=method,
-                clean_mean=result["clean_mean"],
-                adv_mean=result["adv_mean"],
+                split_name="clean",
+                split_mean=result["clean_mean"],
                 x_del=result["x_del"],
                 x_ins=result["x_ins"],
                 out_path=clean_fig_path,
+            )
+            plot_split_curves(
+                method=method,
+                split_name="adv",
+                split_mean=result["adv_mean"],
+                x_del=result["x_del"],
+                x_ins=result["x_ins"],
+                out_path=adv_fig_path,
             )
 
         summary["methods"][method] = {
@@ -770,23 +748,19 @@ def main():
             "x_ins": result["x_ins"].tolist(),
             "clean": {
                 "deletion_pred_prob": result["clean_mean"]["del_pred_prob"].tolist(),
-                "deletion_gt_prob": result["clean_mean"]["del_gt_prob"].tolist(),
                 "insertion_pred_prob": result["clean_mean"]["ins_pred_prob"].tolist(),
-                "insertion_gt_prob": result["clean_mean"]["ins_gt_prob"].tolist(),
             },
             "adv": {
                 "deletion_pred_prob": result["adv_mean"]["del_pred_prob"].tolist(),
-                "deletion_gt_prob": result["adv_mean"]["del_gt_prob"].tolist(),
                 "insertion_pred_prob": result["adv_mean"]["ins_pred_prob"].tolist(),
-                "insertion_gt_prob": result["adv_mean"]["ins_gt_prob"].tolist(),
             },
             "table_metrics": {
-                "columns": ["pred_prob", "gt_prob"],
-                "target": "pred_and_gt_prob",
+                "columns": ["pred_prob"],
+                "target": "pred_prob",
                 "clean": result["clean_metrics"],
                 "adv": result["adv_metrics"],
             },
-            "figure_path": clean_fig_path,
+            "figure_paths": {"clean": clean_fig_path, "adv": adv_fig_path},
         }
 
         for split_name, split_metrics in [
@@ -801,19 +775,18 @@ def main():
                         "split": split_name,
                         "metric": metric_name,
                         "pred_prob": vals["pred_prob"],
-                        "gt_prob": vals["gt_prob"],
                         "num_samples_evaluated": result["num_samples_evaluated"],
                     }
                 )
 
-    pred_prob_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_pred_prob.png")
-    gt_prob_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_gt_prob.png")
-    plot_multi_method_comparison(results_by_method, "pred_prob", pred_prob_comp_path)
-    plot_multi_method_comparison(results_by_method, "gt_prob", gt_prob_comp_path)
+    clean_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_clean_pred_prob.png")
+    adv_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_adv_pred_prob.png")
+    plot_multi_method_comparison(results_by_method, "clean", clean_comp_path)
+    plot_multi_method_comparison(results_by_method, "adv", adv_comp_path)
 
     summary["comparison_figures"] = {
-        "pred_prob": pred_prob_comp_path,
-        "gt_prob": gt_prob_comp_path,
+        "clean_pred_prob": clean_comp_path,
+        "adv_pred_prob": adv_comp_path,
     }
 
     summary_path = os.path.join(args.attack_root, f"{args.output_prefix}_summary.json")
@@ -825,8 +798,8 @@ def main():
 
     print(f"Saved summary: {summary_path}")
     print(f"Saved scalar csv: {scalar_csv_path}")
-    print(f"Saved comparison (pred_prob): {pred_prob_comp_path}")
-    print(f"Saved comparison (gt_prob): {gt_prob_comp_path}")
+    print(f"Saved comparison (clean pred_prob): {clean_comp_path}")
+    print(f"Saved comparison (adv pred_prob): {adv_comp_path}")
 
 
 if __name__ == "__main__":
