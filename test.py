@@ -561,8 +561,6 @@ def evaluate_method(method, args, entries, folder_to_label, clip_model, explaine
         if gt_label is None:
             gt_label = infer_gt_label(entry, args.attack_root, folder_to_label)
         if gt_label is None:
-            print("khoa")
-            raise
             continue
 
         try:
@@ -593,6 +591,7 @@ def evaluate_method(method, args, entries, folder_to_label, clip_model, explaine
                 adv_map = None
 
         try:
+            raise
             clean_curves = build_curves_for_variant(
                 image=clean_img,
                 explain_label=clean_pred_label,
