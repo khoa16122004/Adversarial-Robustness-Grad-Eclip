@@ -103,20 +103,20 @@ def insertion_sequence(image, heatmap, normalize_only, device, l_steps, cal_gap)
     return torch.cat(tensors, dim=0), np.array(steps, dtype=np.int32)
 
 
-def metrics_for_batch(clip_model, image_batch, target_text_embedding, batch_size):
-    cos_list = []
+def metrics_for_batch(clip_model, zero_shot_weights, image_batch, pred_label, batch_size):
+    prob_list = []
 
     with torch.no_grad():
-        text_feat = target_text_embedding / target_text_embedding.norm(dim=-1, keepdim=True)
         total = image_batch.shape[0]
         for start in range(0, total, batch_size):
             end = min(start + batch_size, total)
             feats = clip_model.encode_image(image_batch[start:end])
-            feats = feats / feats.norm(dim=-1, keepdim=True)
-            cos = (feats @ text_feat.T).squeeze(-1)
-            cos_list.append(cos.detach().cpu().numpy())
+            logits = 100.0 * feats @ zero_shot_weights
+            probs = logits.softmax(dim=-1)
+            pred_prob = probs[:, pred_label]
+            prob_list.append(pred_prob.detach().cpu().numpy())
 
-    return np.concatenate(cos_list)
+    return np.concatenate(prob_list)
 
 
 def normalize_heatmap(hm):
@@ -161,8 +161,9 @@ def build_curves_for_variant(
     original_tensor = normalize_only(image).unsqueeze(0).to(device)
     original_pred_prob = metrics_for_batch(
         clip_model,
+        zero_shot_weights,
         original_tensor,
-        target_text_embedding,
+        pred_label,
         batch_size,
     )
 
@@ -170,8 +171,9 @@ def build_curves_for_variant(
     black_tensor = normalize_only(black_img).unsqueeze(0).to(device)
     black_pred_prob = metrics_for_batch(
         clip_model,
+        zero_shot_weights,
         black_tensor,
-        target_text_embedding,
+        pred_label,
         batch_size,
     )
 
@@ -180,14 +182,16 @@ def build_curves_for_variant(
 
     del_pred_prob = metrics_for_batch(
         clip_model,
+        zero_shot_weights,
         del_batch,
-        target_text_embedding,
+        pred_label,
         batch_size,
     )
     ins_pred_prob = metrics_for_batch(
         clip_model,
+        zero_shot_weights,
         ins_batch,
-        target_text_embedding,
+        pred_label,
         batch_size,
     )
 
@@ -197,8 +201,8 @@ def build_curves_for_variant(
     return {
         "x_del": x_del,
         "x_ins": x_ins,
-        "del_cos": np.concatenate(([original_pred_prob[0]], del_pred_prob)),
-        "ins_cos": np.concatenate(([black_pred_prob[0]], ins_pred_prob)),
+        "del_prob": np.concatenate(([original_pred_prob[0]], del_pred_prob)),
+        "ins_prob": np.concatenate(([black_pred_prob[0]], ins_pred_prob)),
     }
 
 
@@ -209,27 +213,27 @@ def step_mean(curve):
 
 
 def compute_scalar_scores(curves):
-    del_cos = step_mean(curves["del_cos"])
-    ins_cos = step_mean(curves["ins_cos"])
+    del_prob = step_mean(curves["del_prob"])
+    ins_prob = step_mean(curves["ins_prob"])
     return {
-        "deletion": {"cosine": del_cos},
-        "insertion": {"cosine": ins_cos},
-        "imd": {"cosine": ins_cos - del_cos},
+        "deletion": {"prob": del_prob},
+        "insertion": {"prob": ins_prob},
+        "imd": {"prob": ins_prob - del_prob},
     }
 
 
 def init_metrics_bucket():
     return {
-        "deletion": {"cosine": 0.0},
-        "insertion": {"cosine": 0.0},
-        "imd": {"cosine": 0.0},
+        "deletion": {"prob": 0.0},
+        "insertion": {"prob": 0.0},
+        "imd": {"prob": 0.0},
         "count": 0,
     }
 
 
 def add_metrics(bucket, scores):
     for metric_name in ["deletion", "insertion", "imd"]:
-        bucket[metric_name]["cosine"] += float(scores[metric_name]["cosine"])
+        bucket[metric_name]["prob"] += float(scores[metric_name]["prob"])
     bucket["count"] += 1
 
 
@@ -238,7 +242,7 @@ def finalize_metrics(bucket):
     out = {}
     for metric_name in ["deletion", "insertion", "imd"]:
         out[metric_name] = {
-            "cosine": bucket[metric_name]["cosine"] / c,
+            "prob": bucket[metric_name]["prob"] / c,
         }
     out["count"] = bucket["count"]
     return out
@@ -340,22 +344,22 @@ def get_precomputed_map_path(entry, method, split, attack_root):
 def plot_split_curves(method, split_name, split_mean, x_del, x_ins, out_path):
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.8), dpi=120)
 
-    axes[0].plot(x_del, split_mean["del_cos"], marker="o", label="Deletion Cosine")
+    axes[0].plot(x_del, split_mean["del_prob"], marker="o", label="Deletion Prob")
     axes[0].set_title("Deletion")
     axes[0].set_xlabel("Step")
-    axes[0].set_ylabel("Cosine")
+    axes[0].set_ylabel("Prob")
     axes[0].grid(True, alpha=0.3)
 
-    axes[1].plot(x_ins, split_mean["ins_cos"], marker="o", label="Insertion Cosine")
+    axes[1].plot(x_ins, split_mean["ins_prob"], marker="o", label="Insertion Prob")
     axes[1].set_title("Insertion")
     axes[1].set_xlabel("Step")
-    axes[1].set_ylabel("Cosine")
+    axes[1].set_ylabel("Prob")
     axes[1].grid(True, alpha=0.3)
 
     for ax in axes:
         ax.legend(loc="best", frameon=False)
 
-    plt.suptitle(f"{method} | {split_name} | cosine")
+    plt.suptitle(f"{method} | {split_name} | probability")
     plt.tight_layout()
     plt.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
@@ -381,8 +385,8 @@ def plot_multi_method_comparison(results_by_method, split_name, out_path):
             "color": colors[method],
             "label": method,
         }
-        axes[0].plot(x_del, split["del_cos"], **style)
-        axes[1].plot(x_ins, split["ins_cos"], **style)
+        axes[0].plot(x_del, split["del_prob"], **style)
+        axes[1].plot(x_ins, split["ins_prob"], **style)
 
     axes[0].set_title(f"{split_name.capitalize()} - Deletion")
     axes[1].set_title(f"{split_name.capitalize()} - Insertion")
@@ -391,12 +395,13 @@ def plot_multi_method_comparison(results_by_method, split_name, out_path):
     axes[1].set_xlabel("Step")
 
     for ax in axes:
-        ax.set_ylabel("Cosine")
+        ax.set_ylabel("Prob")
         ax.grid(True, alpha=0.25, linestyle="--")
+        ax.set_ylim(0.0, 1.0)
 
     handles, labels = axes[1].get_legend_handles_labels()
     fig.legend(handles, labels, loc="center left", bbox_to_anchor=(0.99, 0.5), frameon=False, title="Methods")
-    plt.suptitle(f"Method Comparison | {split_name.capitalize()} | Cosine", fontsize=14, fontweight="bold")
+    plt.suptitle(f"Method Comparison | {split_name.capitalize()} | Prob", fontsize=14, fontweight="bold")
     plt.tight_layout(rect=[0.0, 0.0, 0.88, 0.96])
     plt.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
@@ -423,8 +428,8 @@ def plot_sample_auc_panels(method, sample_folder, clean_curves, adv_curves, out_
     for split_name, curves in split_curves.items():
         fig, axes = plt.subplots(1, 2, figsize=(8, 4), dpi=120)
         panels = [
-            (axes[0], curves["x_del"], curves["del_cos"], "Deletion"),
-            (axes[1], curves["x_ins"], curves["ins_cos"], "Insertion"),
+            (axes[0], curves["x_del"], curves["del_prob"], "Deletion"),
+            (axes[1], curves["x_ins"], curves["ins_prob"], "Insertion"),
         ]
 
         for ax, x, pred_y, title in panels:
@@ -433,11 +438,11 @@ def plot_sample_auc_panels(method, sample_folder, clean_curves, adv_curves, out_
             ax.set_title(title)
             ax.set_xlim(0.0, max(1.0, float(np.max(x))))
             ax.set_xlabel("Step")
-            ax.set_ylabel("Cosine")
+            ax.set_ylabel("Prob")
             pred_auc = curve_auc(x, pred_y)
             ax.text(0.5, 0.5, f"AUC={pred_auc:.3f}", ha="center", va="center", fontsize=12, transform=ax.transAxes)
 
-        plt.suptitle(f"{method} | {split_name} | cosine", fontsize=11)
+        plt.suptitle(f"{method} | {split_name} | probability", fontsize=11)
         plt.tight_layout()
         split_out_name = f"{split_name}_{out_name}"
         out_path = os.path.join(sample_folder, split_out_name)
