@@ -20,6 +20,15 @@ def derive_default_prefix(summary_path):
     return "pred_eval"
 
 
+def curve_auc(x, y):
+    x_vals = [float(v) for v in x]
+    y_vals = [float(v) for v in y]
+    auc = 0.0
+    for i in range(len(x_vals) - 1):
+        auc += (x_vals[i + 1] - x_vals[i]) * (y_vals[i] + y_vals[i + 1]) * 0.5
+    return auc
+
+
 def plot_multi_method_comparison(summary_methods, score_key, out_path):
     methods = sorted(summary_methods.keys())
     cmap = plt.get_cmap("tab10")
@@ -35,16 +44,16 @@ def plot_multi_method_comparison(summary_methods, score_key, out_path):
         clean = method_data["clean"]
         adv = method_data["adv"]
 
-        if score_key == "cos":
-            clean_del = clean["deletion_cosine"]
-            clean_ins = clean["insertion_cosine"]
-            adv_del = adv["deletion_cosine"]
-            adv_ins = adv["insertion_cosine"]
+        if score_key == "pred_prob":
+            clean_del = clean["deletion_pred_prob"]
+            clean_ins = clean["insertion_pred_prob"]
+            adv_del = adv["deletion_pred_prob"]
+            adv_ins = adv["insertion_pred_prob"]
         else:
-            clean_del = clean["deletion_accuracy"]
-            clean_ins = clean["insertion_accuracy"]
-            adv_del = adv["deletion_accuracy"]
-            adv_ins = adv["insertion_accuracy"]
+            clean_del = clean["deletion_gt_prob"]
+            clean_ins = clean["insertion_gt_prob"]
+            adv_del = adv["deletion_gt_prob"]
+            adv_ins = adv["insertion_gt_prob"]
 
         style = {
             "linewidth": 2.0,
@@ -70,20 +79,15 @@ def plot_multi_method_comparison(summary_methods, score_key, out_path):
     axes[0, 1].set_xlabel("Inserted Pixel Ratio")
     axes[1, 1].set_xlabel("Inserted Pixel Ratio")
 
-    y_label = "Cosine" if score_key == "cos" else "Accuracy"
+    y_label = "Pred Prob" if score_key == "pred_prob" else "GT Prob"
     for ax in axes.flatten():
         ax.set_ylabel(y_label)
         ax.grid(True, alpha=0.25, linestyle="--")
-        if score_key == "acc":
-            ax.set_ylim(0.0, 1.0)
-        else:
-            ax.relim()
-            ax.autoscale_view(scaley=True)
-            ax.margins(y=0.08)
+        ax.set_ylim(0.0, 1.0)
 
     handles, labels = axes[1, 1].get_legend_handles_labels()
     fig.legend(handles, labels, loc="center left", bbox_to_anchor=(0.99, 0.5), frameon=False, title="Methods")
-    plt.suptitle(f"Pred-only Method Comparison ({y_label})", fontsize=14, fontweight="bold")
+    plt.suptitle(f"Pred/GT Prob Method Comparison ({y_label})", fontsize=14, fontweight="bold")
     plt.tight_layout(rect=[0.0, 0.0, 0.88, 0.96])
     plt.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
@@ -95,18 +99,18 @@ def plot_method_clean_adv_comparison(method, method_data, score_key, out_path):
     clean = method_data["clean"]
     adv = method_data["adv"]
 
-    if score_key == "cos":
-        clean_del = clean["deletion_cosine"]
-        clean_ins = clean["insertion_cosine"]
-        adv_del = adv["deletion_cosine"]
-        adv_ins = adv["insertion_cosine"]
-        y_label = "Cosine"
+    if score_key == "pred_prob":
+        clean_del = clean["deletion_pred_prob"]
+        clean_ins = clean["insertion_pred_prob"]
+        adv_del = adv["deletion_pred_prob"]
+        adv_ins = adv["insertion_pred_prob"]
+        y_label = "Pred Prob"
     else:
-        clean_del = clean["deletion_accuracy"]
-        clean_ins = clean["insertion_accuracy"]
-        adv_del = adv["deletion_accuracy"]
-        adv_ins = adv["insertion_accuracy"]
-        y_label = "Accuracy"
+        clean_del = clean["deletion_gt_prob"]
+        clean_ins = clean["insertion_gt_prob"]
+        adv_del = adv["deletion_gt_prob"]
+        adv_ins = adv["insertion_gt_prob"]
+        y_label = "GT Prob"
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.8), dpi=140)
 
@@ -124,14 +128,15 @@ def plot_method_clean_adv_comparison(method, method_data, score_key, out_path):
     axes[1].set_ylabel(y_label)
     axes[1].grid(True, alpha=0.25, linestyle="--")
 
-    if score_key == "acc":
-        axes[0].set_ylim(0.0, 1.0)
-        axes[1].set_ylim(0.0, 1.0)
-    else:
-        for ax in axes:
-            ax.relim()
-            ax.autoscale_view(scaley=True)
-            ax.margins(y=0.08)
+    axes[0].set_ylim(0.0, 1.0)
+    axes[1].set_ylim(0.0, 1.0)
+
+    clean_del_auc = curve_auc(x_del, clean_del)
+    clean_ins_auc = curve_auc(x_ins, clean_ins)
+    adv_del_auc = curve_auc(x_del, adv_del)
+    adv_ins_auc = curve_auc(x_ins, adv_ins)
+    axes[0].text(0.98, 0.04, f"Clean AUC={clean_del_auc:.3f}\nAdv AUC={adv_del_auc:.3f}", ha="right", va="bottom", transform=axes[0].transAxes, fontsize=9)
+    axes[1].text(0.98, 0.04, f"Clean AUC={clean_ins_auc:.3f}\nAdv AUC={adv_ins_auc:.3f}", ha="right", va="bottom", transform=axes[1].transAxes, fontsize=9)
 
     axes[1].legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
     plt.suptitle(f"{method} | Clean vs Adv ({y_label})", fontsize=13, fontweight="bold")
@@ -142,7 +147,7 @@ def plot_method_clean_adv_comparison(method, method_data, score_key, out_path):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Regenerate 2 comparison charts (accuracy/cosine) from pred_eval summary JSON"
+        description="Regenerate comparison charts (pred_prob/gt_prob) from pred_eval summary JSON"
     )
     parser.add_argument(
         "--summary-path",
@@ -178,22 +183,22 @@ def main():
 
     output_prefix = args.output_prefix or derive_default_prefix(args.summary_path)
 
-    cosine_path = os.path.join(output_dir, f"{output_prefix}_methods_cosine.png")
-    acc_path = os.path.join(output_dir, f"{output_prefix}_methods_acc.png")
+    pred_prob_path = os.path.join(output_dir, f"{output_prefix}_methods_pred_prob.png")
+    gt_prob_path = os.path.join(output_dir, f"{output_prefix}_methods_gt_prob.png")
 
-    plot_multi_method_comparison(summary_methods, "cos", cosine_path)
-    plot_multi_method_comparison(summary_methods, "acc", acc_path)
+    plot_multi_method_comparison(summary_methods, "pred_prob", pred_prob_path)
+    plot_multi_method_comparison(summary_methods, "gt_prob", gt_prob_path)
 
     per_method_dir = os.path.join(output_dir, f"{output_prefix}_per_method")
     os.makedirs(per_method_dir, exist_ok=True)
     for method, method_data in sorted(summary_methods.items()):
-        method_acc_path = os.path.join(per_method_dir, f"{method}_clean_vs_adv_acc.png")
-        method_cos_path = os.path.join(per_method_dir, f"{method}_clean_vs_adv_cosine.png")
-        plot_method_clean_adv_comparison(method, method_data, "acc", method_acc_path)
-        plot_method_clean_adv_comparison(method, method_data, "cos", method_cos_path)
+        method_pred_path = os.path.join(per_method_dir, f"{method}_clean_vs_adv_pred_prob.png")
+        method_gt_path = os.path.join(per_method_dir, f"{method}_clean_vs_adv_gt_prob.png")
+        plot_method_clean_adv_comparison(method, method_data, "pred_prob", method_pred_path)
+        plot_method_clean_adv_comparison(method, method_data, "gt_prob", method_gt_path)
 
-    print(f"Saved comparison (cosine): {cosine_path}")
-    print(f"Saved comparison (accuracy): {acc_path}")
+    print(f"Saved comparison (pred_prob): {pred_prob_path}")
+    print(f"Saved comparison (gt_prob): {gt_prob_path}")
     print(f"Saved per-method clean-vs-adv charts in: {per_method_dir}")
 
 
