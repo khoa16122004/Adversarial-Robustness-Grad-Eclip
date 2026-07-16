@@ -306,7 +306,6 @@ def find_sample_entries(attack_root):
     entries = []
     for root, _, files in os.walk(attack_root):
         print(files)
-        raise
         if "metadata.json" not in files:
             continue
 
