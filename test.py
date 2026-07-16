@@ -23,6 +23,43 @@ def setup_plot_style():
         plt.style.use("default")
 
 
+def load_imagenet_label_map(index_json_path):
+    with open(index_json_path, "r", encoding="utf-8") as f:
+        class_dict = json.load(f)
+
+    if not isinstance(class_dict, dict) or len(class_dict) == 0:
+        raise ValueError(f"Invalid label json format: {index_json_path}")
+
+    sample_key = next(iter(class_dict.keys()))
+    folder_to_label = {}
+
+    if str(sample_key).isdigit():
+        for label_str, values in class_dict.items():
+            if not isinstance(values, list) or len(values) < 1:
+                continue
+            folder_to_label[str(values[0])] = int(label_str)
+        return folder_to_label
+
+    for wnid, values in class_dict.items():
+        if isinstance(values, list) and len(values) > 0:
+            folder_to_label[str(wnid)] = int(values[0])
+        elif isinstance(values, int):
+            folder_to_label[str(wnid)] = int(values)
+
+    if not folder_to_label:
+        raise ValueError(f"Could not parse label mapping from: {index_json_path}")
+
+    return folder_to_label
+
+
+def infer_gt_label(entry, attack_root, folder_to_label):
+    rel = os.path.relpath(entry["clean_path"], attack_root).replace("\\", "/")
+    folder = rel.split("/")[0]
+    if folder in folder_to_label:
+        return int(folder_to_label[folder])
+    return None
+
+
 def make_grids(h, w):
     shifts_x = torch.arange(0, w, 1)
     shifts_y = torch.arange(0, h, 1)
@@ -95,9 +132,9 @@ def insertion_sequence(image, heatmap, normalize_only, device, l_steps, cal_gap)
     return torch.cat(tensors, dim=0), np.array(fractions)
 
 
-def metrics_for_batch(clip_model, zero_shot_weights, image_batch, target_label, batch_size):
-    acc_list = []
-    margin_list = []
+def metrics_for_batch(clip_model, zero_shot_weights, image_batch, pred_label, gt_label, batch_size):
+    pred_prob_list = []
+    gt_prob_list = []
 
     with torch.no_grad():
         total = image_batch.shape[0]
@@ -106,16 +143,14 @@ def metrics_for_batch(clip_model, zero_shot_weights, image_batch, target_label, 
             feats = clip_model.encode_image(image_batch[start:end])
             logits = 100.0 * feats @ zero_shot_weights
             probs = logits.softmax(dim=-1)
-            preds = probs.argmax(dim=-1)
-            acc = (preds == target_label).float()
 
-            top2 = torch.topk(probs, k=2, dim=-1).values
-            margin = top2[:, 0] - top2[:, 1]
+            pred_prob = probs[:, pred_label]
+            gt_prob = probs[:, gt_label]
 
-            acc_list.append(acc.detach().cpu().numpy())
-            margin_list.append(margin.detach().cpu().numpy())
+            pred_prob_list.append(pred_prob.detach().cpu().numpy())
+            gt_prob_list.append(gt_prob.detach().cpu().numpy())
 
-    return np.concatenate(acc_list), np.concatenate(margin_list)
+    return np.concatenate(pred_prob_list), np.concatenate(gt_prob_list)
 
 
 def normalize_heatmap(hm):
@@ -132,7 +167,9 @@ def normalize_heatmap(hm):
 
 def build_curves_for_variant(
     image,
-    target_label,
+    explain_label,
+    pred_label,
+    gt_label,
     method,
     clip_model,
     explainer,
@@ -147,8 +184,8 @@ def build_curves_for_variant(
     w, h = image.size
     resize = Resize((h, w))
 
-    target_text_embedding = zero_shot_weights[:, target_label].unsqueeze(0)
-    target_texts = [IMAGENET_CLASSNAMES[target_label]]
+    target_text_embedding = zero_shot_weights[:, explain_label].unsqueeze(0)
+    target_texts = [IMAGENET_CLASSNAMES[explain_label]]
 
     if precomputed_heatmap is not None:
         heatmap = normalize_heatmap(precomputed_heatmap)
@@ -157,39 +194,43 @@ def build_curves_for_variant(
         heatmap = normalize_heatmap(heatmap)
 
     original_tensor = normalize_only(image).unsqueeze(0).to(device)
-    original_acc, original_margin = metrics_for_batch(
+    original_pred_prob, original_gt_prob = metrics_for_batch(
         clip_model,
         zero_shot_weights,
         original_tensor,
-        target_label,
+        pred_label,
+        gt_label,
         batch_size,
     )
 
     black_img = Image.fromarray(np.zeros((h, w, 3), dtype=np.uint8))
     black_tensor = normalize_only(black_img).unsqueeze(0).to(device)
-    black_acc, black_margin = metrics_for_batch(
+    black_pred_prob, black_gt_prob = metrics_for_batch(
         clip_model,
         zero_shot_weights,
         black_tensor,
-        target_label,
+        pred_label,
+        gt_label,
         batch_size,
     )
 
     del_batch, del_fraction = deletion_sequence(image, heatmap, normalize_only, device, l_steps, gap)
     ins_batch, ins_fraction = insertion_sequence(image, heatmap, normalize_only, device, l_steps, gap)
 
-    del_acc, del_margin = metrics_for_batch(
+    del_pred_prob, del_gt_prob = metrics_for_batch(
         clip_model,
         zero_shot_weights,
         del_batch,
-        target_label,
+        pred_label,
+        gt_label,
         batch_size,
     )
-    ins_acc, ins_margin = metrics_for_batch(
+    ins_pred_prob, ins_gt_prob = metrics_for_batch(
         clip_model,
         zero_shot_weights,
         ins_batch,
-        target_label,
+        pred_label,
+        gt_label,
         batch_size,
     )
 
@@ -199,10 +240,10 @@ def build_curves_for_variant(
     return {
         "x_del": x_del,
         "x_ins": x_ins,
-        "del_acc": np.concatenate(([original_acc[0]], del_acc)),
-        "del_margin": np.concatenate(([original_margin[0]], del_margin)),
-        "ins_acc": np.concatenate(([black_acc[0]], ins_acc)),
-        "ins_margin": np.concatenate(([black_margin[0]], ins_margin)),
+        "del_pred_prob": np.concatenate(([original_pred_prob[0]], del_pred_prob)),
+        "del_gt_prob": np.concatenate(([original_gt_prob[0]], del_gt_prob)),
+        "ins_pred_prob": np.concatenate(([black_pred_prob[0]], ins_pred_prob)),
+        "ins_gt_prob": np.concatenate(([black_gt_prob[0]], ins_gt_prob)),
     }
 
 
@@ -213,30 +254,30 @@ def step_mean(curve):
 
 
 def compute_scalar_scores(curves):
-    del_acc = step_mean(curves["del_acc"])
-    del_margin = step_mean(curves["del_margin"])
-    ins_acc = step_mean(curves["ins_acc"])
-    ins_margin = step_mean(curves["ins_margin"])
+    del_pred_prob = step_mean(curves["del_pred_prob"])
+    del_gt_prob = step_mean(curves["del_gt_prob"])
+    ins_pred_prob = step_mean(curves["ins_pred_prob"])
+    ins_gt_prob = step_mean(curves["ins_gt_prob"])
     return {
-        "deletion": {"acc": del_acc, "margin_prob": del_margin},
-        "insertion": {"acc": ins_acc, "margin_prob": ins_margin},
-        "imd": {"acc": ins_acc - del_acc, "margin_prob": ins_margin - del_margin},
+        "deletion": {"pred_prob": del_pred_prob, "gt_prob": del_gt_prob},
+        "insertion": {"pred_prob": ins_pred_prob, "gt_prob": ins_gt_prob},
+        "imd": {"pred_prob": ins_pred_prob - del_pred_prob, "gt_prob": ins_gt_prob - del_gt_prob},
     }
 
 
 def init_metrics_bucket():
     return {
-        "deletion": {"acc": 0.0, "margin_prob": 0.0},
-        "insertion": {"acc": 0.0, "margin_prob": 0.0},
-        "imd": {"acc": 0.0, "margin_prob": 0.0},
+        "deletion": {"pred_prob": 0.0, "gt_prob": 0.0},
+        "insertion": {"pred_prob": 0.0, "gt_prob": 0.0},
+        "imd": {"pred_prob": 0.0, "gt_prob": 0.0},
         "count": 0,
     }
 
 
 def add_metrics(bucket, scores):
     for metric_name in ["deletion", "insertion", "imd"]:
-        bucket[metric_name]["acc"] += float(scores[metric_name]["acc"])
-        bucket[metric_name]["margin_prob"] += float(scores[metric_name]["margin_prob"])
+        bucket[metric_name]["pred_prob"] += float(scores[metric_name]["pred_prob"])
+        bucket[metric_name]["gt_prob"] += float(scores[metric_name]["gt_prob"])
     bucket["count"] += 1
 
 
@@ -245,8 +286,8 @@ def finalize_metrics(bucket):
     out = {}
     for metric_name in ["deletion", "insertion", "imd"]:
         out[metric_name] = {
-            "acc": bucket[metric_name]["acc"] / c,
-            "margin_prob": bucket[metric_name]["margin_prob"] / c,
+            "pred_prob": bucket[metric_name]["pred_prob"] / c,
+            "gt_prob": bucket[metric_name]["gt_prob"] / c,
         }
     out["count"] = bucket["count"]
     return out
@@ -306,6 +347,7 @@ def find_sample_entries(attack_root):
                 "adv_map_npy_paths": adv_map_npy_paths if isinstance(adv_map_npy_paths, dict) else None,
                 "clean_pred_label": int(clean_pred_label),
                 "adv_pred_label": int(adv_pred_label) if adv_pred_label is not None else int(clean_pred_label),
+                "gt_label": int(meta["gt_label"]) if meta.get("gt_label") is not None else None,
             }
         )
 
@@ -346,29 +388,29 @@ def get_precomputed_map_path(entry, method, split, attack_root):
 def plot_single_method_curves(method, clean_mean, adv_mean, x_del, x_ins, out_path):
     fig, axes = plt.subplots(2, 2, figsize=(14, 10), dpi=120)
 
-    axes[0, 0].plot(x_del, clean_mean["del_acc"], marker="o", label="Deletion Acc")
-    axes[0, 0].plot(x_del, clean_mean["del_margin"], marker="o", label="Deletion Margin")
+    axes[0, 0].plot(x_del, clean_mean["del_pred_prob"], marker="o", label="Deletion Pred Prob")
+    axes[0, 0].plot(x_del, clean_mean["del_gt_prob"], marker="o", label="Deletion GT Prob")
     axes[0, 0].set_title("Clean - Deletion")
     axes[0, 0].set_xlabel("Removed Pixel Ratio")
     axes[0, 0].set_ylabel("Score")
     axes[0, 0].grid(True, alpha=0.3)
 
-    axes[0, 1].plot(x_ins, clean_mean["ins_acc"], marker="o", label="Insertion Acc")
-    axes[0, 1].plot(x_ins, clean_mean["ins_margin"], marker="o", label="Insertion Margin")
+    axes[0, 1].plot(x_ins, clean_mean["ins_pred_prob"], marker="o", label="Insertion Pred Prob")
+    axes[0, 1].plot(x_ins, clean_mean["ins_gt_prob"], marker="o", label="Insertion GT Prob")
     axes[0, 1].set_title("Clean - Insertion")
     axes[0, 1].set_xlabel("Inserted Pixel Ratio")
     axes[0, 1].set_ylabel("Score")
     axes[0, 1].grid(True, alpha=0.3)
 
-    axes[1, 0].plot(x_del, adv_mean["del_acc"], marker="o", label="Deletion Acc")
-    axes[1, 0].plot(x_del, adv_mean["del_margin"], marker="o", label="Deletion Margin")
+    axes[1, 0].plot(x_del, adv_mean["del_pred_prob"], marker="o", label="Deletion Pred Prob")
+    axes[1, 0].plot(x_del, adv_mean["del_gt_prob"], marker="o", label="Deletion GT Prob")
     axes[1, 0].set_title("Adv - Deletion")
     axes[1, 0].set_xlabel("Removed Pixel Ratio")
     axes[1, 0].set_ylabel("Score")
     axes[1, 0].grid(True, alpha=0.3)
 
-    axes[1, 1].plot(x_ins, adv_mean["ins_acc"], marker="o", label="Insertion Acc")
-    axes[1, 1].plot(x_ins, adv_mean["ins_margin"], marker="o", label="Insertion Margin")
+    axes[1, 1].plot(x_ins, adv_mean["ins_pred_prob"], marker="o", label="Insertion Pred Prob")
+    axes[1, 1].plot(x_ins, adv_mean["ins_gt_prob"], marker="o", label="Insertion GT Prob")
     axes[1, 1].set_title("Adv - Insertion")
     axes[1, 1].set_xlabel("Inserted Pixel Ratio")
     axes[1, 1].set_ylabel("Score")
@@ -377,7 +419,7 @@ def plot_single_method_curves(method, clean_mean, adv_mean, x_del, x_ins, out_pa
     for ax in axes.flatten():
         ax.legend(loc="best", frameon=False)
 
-    plt.suptitle(f"Pred-only curves | method={method}")
+    plt.suptitle(f"Pred/GT probability curves | method={method}")
     plt.tight_layout()
     plt.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
@@ -419,20 +461,15 @@ def plot_multi_method_comparison(results_by_method, score_key, out_path):
     axes[0, 1].set_xlabel("Inserted Pixel Ratio")
     axes[1, 1].set_xlabel("Inserted Pixel Ratio")
 
-    y_label = "Margin Prob" if score_key == "margin" else "Accuracy"
+    y_label = "Pred Prob" if score_key == "pred_prob" else "GT Prob"
     for ax in axes.flatten():
         ax.set_ylabel(y_label)
         ax.grid(True, alpha=0.25, linestyle="--")
-        if score_key == "acc":
-            ax.set_ylim(0.0, 1.0)
-        else:
-            ax.relim()
-            ax.autoscale_view(scaley=True)
-            ax.margins(y=0.08)
+        ax.set_ylim(0.0, 1.0)
 
     handles, labels = axes[1, 1].get_legend_handles_labels()
     fig.legend(handles, labels, loc="center left", bbox_to_anchor=(0.99, 0.5), frameon=False, title="Methods")
-    plt.suptitle(f"Pred-only Method Comparison ({y_label})", fontsize=14, fontweight="bold")
+    plt.suptitle(f"Pred/GT Prob Method Comparison ({y_label})", fontsize=14, fontweight="bold")
     plt.tight_layout(rect=[0.0, 0.0, 0.88, 0.96])
     plt.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
@@ -445,24 +482,52 @@ def curve_auc(x, y):
 def plot_sample_auc_panels(method, sample_folder, clean_curves, adv_curves, out_name):
     fig, axes = plt.subplots(2, 2, figsize=(8, 8), dpi=120)
     panels = [
-        (axes[0, 0], clean_curves["x_del"], clean_curves["del_margin"], "Deletion"),
-        (axes[0, 1], clean_curves["x_ins"], clean_curves["ins_margin"], "Insertion"),
-        (axes[1, 0], adv_curves["x_del"], adv_curves["del_margin"], "Deletion"),
-        (axes[1, 1], adv_curves["x_ins"], adv_curves["ins_margin"], "Insertion"),
+        (
+            axes[0, 0],
+            clean_curves["x_del"],
+            clean_curves["del_pred_prob"],
+            clean_curves["del_gt_prob"],
+            "Deletion",
+        ),
+        (
+            axes[0, 1],
+            clean_curves["x_ins"],
+            clean_curves["ins_pred_prob"],
+            clean_curves["ins_gt_prob"],
+            "Insertion",
+        ),
+        (
+            axes[1, 0],
+            adv_curves["x_del"],
+            adv_curves["del_pred_prob"],
+            adv_curves["del_gt_prob"],
+            "Deletion",
+        ),
+        (
+            axes[1, 1],
+            adv_curves["x_ins"],
+            adv_curves["ins_pred_prob"],
+            adv_curves["ins_gt_prob"],
+            "Insertion",
+        ),
     ]
 
-    for ax, x, y, title in panels:
-        ax.plot(x, y, color="#1f77b4", linewidth=1.5)
-        ax.fill_between(x, y, color="#1f77b4", alpha=0.35)
+    for ax, x, pred_y, gt_y, title in panels:
+        ax.plot(x, pred_y, color="#1f77b4", linewidth=1.5, label="pred")
+        ax.fill_between(x, pred_y, color="#1f77b4", alpha=0.25)
+        ax.plot(x, gt_y, color="#ff7f0e", linewidth=1.5, label="gt")
+        ax.fill_between(x, gt_y, color="#ff7f0e", alpha=0.20)
         ax.set_title(title)
         ax.set_xlim(0.0, 1.0)
         ax.set_ylim(0.0, 1.0)
         ax.set_xticks([])
         ax.set_yticks([])
-        auc_val = curve_auc(x, y)
-        ax.text(0.5, 0.5, f"AUC={auc_val:.3f}", ha="center", va="center", fontsize=16, transform=ax.transAxes)
+        pred_auc = curve_auc(x, pred_y)
+        gt_auc = curve_auc(x, gt_y)
+        ax.text(0.5, 0.56, f"Pred AUC={pred_auc:.3f}", ha="center", va="center", fontsize=11, transform=ax.transAxes)
+        ax.text(0.5, 0.44, f"GT AUC={gt_auc:.3f}", ha="center", va="center", fontsize=11, transform=ax.transAxes)
 
-    plt.suptitle(f"{method} | margin probability", fontsize=11)
+    plt.suptitle(f"{method} | pred/gt probability", fontsize=11)
     plt.tight_layout()
     out_path = os.path.join(sample_folder, out_name)
     plt.savefig(out_path, bbox_inches="tight")
@@ -470,16 +535,16 @@ def plot_sample_auc_panels(method, sample_folder, clean_curves, adv_curves, out_
     return out_path
 
 
-def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weights, normalize_only, device):
-    clean_del_acc_sum = None
-    clean_del_margin_sum = None
-    clean_ins_acc_sum = None
-    clean_ins_margin_sum = None
+def evaluate_method(method, args, entries, folder_to_label, clip_model, explainer, zero_shot_weights, normalize_only, device):
+    clean_del_pred_prob_sum = None
+    clean_del_gt_prob_sum = None
+    clean_ins_pred_prob_sum = None
+    clean_ins_gt_prob_sum = None
 
-    adv_del_acc_sum = None
-    adv_del_margin_sum = None
-    adv_ins_acc_sum = None
-    adv_ins_margin_sum = None
+    adv_del_pred_prob_sum = None
+    adv_del_gt_prob_sum = None
+    adv_ins_pred_prob_sum = None
+    adv_ins_gt_prob_sum = None
 
     x_del = None
     x_ins = None
@@ -489,6 +554,12 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
     adv_table = init_metrics_bucket()
 
     for entry in tqdm(entries, desc=f"Evaluating ({method})"):
+        gt_label = entry.get("gt_label")
+        if gt_label is None:
+            gt_label = infer_gt_label(entry, args.attack_root, folder_to_label)
+        if gt_label is None:
+            continue
+
         try:
             clean_img = load_image_from_tensor_or_png(entry.get("clean_tensor_path"), entry["clean_path"])
             adv_img = load_image_from_tensor_or_png(entry.get("adv_tensor_path"), entry["adv_path"])
@@ -519,7 +590,9 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
         try:
             clean_curves = build_curves_for_variant(
                 image=clean_img,
-                target_label=clean_pred_label,
+                explain_label=clean_pred_label,
+                pred_label=clean_pred_label,
+                gt_label=gt_label,
                 method=method,
                 clip_model=clip_model,
                 explainer=explainer,
@@ -533,7 +606,9 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
             )
             adv_curves = build_curves_for_variant(
                 image=adv_img,
-                target_label=adv_pred_label,
+                explain_label=adv_pred_label,
+                pred_label=adv_pred_label,
+                gt_label=gt_label,
                 method=method,
                 clip_model=clip_model,
                 explainer=explainer,
@@ -566,25 +641,25 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
             x_del = clean_curves["x_del"]
             x_ins = clean_curves["x_ins"]
 
-            clean_del_acc_sum = np.zeros_like(clean_curves["del_acc"], dtype=np.float64)
-            clean_del_margin_sum = np.zeros_like(clean_curves["del_margin"], dtype=np.float64)
-            clean_ins_acc_sum = np.zeros_like(clean_curves["ins_acc"], dtype=np.float64)
-            clean_ins_margin_sum = np.zeros_like(clean_curves["ins_margin"], dtype=np.float64)
+            clean_del_pred_prob_sum = np.zeros_like(clean_curves["del_pred_prob"], dtype=np.float64)
+            clean_del_gt_prob_sum = np.zeros_like(clean_curves["del_gt_prob"], dtype=np.float64)
+            clean_ins_pred_prob_sum = np.zeros_like(clean_curves["ins_pred_prob"], dtype=np.float64)
+            clean_ins_gt_prob_sum = np.zeros_like(clean_curves["ins_gt_prob"], dtype=np.float64)
 
-            adv_del_acc_sum = np.zeros_like(adv_curves["del_acc"], dtype=np.float64)
-            adv_del_margin_sum = np.zeros_like(adv_curves["del_margin"], dtype=np.float64)
-            adv_ins_acc_sum = np.zeros_like(adv_curves["ins_acc"], dtype=np.float64)
-            adv_ins_margin_sum = np.zeros_like(adv_curves["ins_margin"], dtype=np.float64)
+            adv_del_pred_prob_sum = np.zeros_like(adv_curves["del_pred_prob"], dtype=np.float64)
+            adv_del_gt_prob_sum = np.zeros_like(adv_curves["del_gt_prob"], dtype=np.float64)
+            adv_ins_pred_prob_sum = np.zeros_like(adv_curves["ins_pred_prob"], dtype=np.float64)
+            adv_ins_gt_prob_sum = np.zeros_like(adv_curves["ins_gt_prob"], dtype=np.float64)
 
-        clean_del_acc_sum += clean_curves["del_acc"]
-        clean_del_margin_sum += clean_curves["del_margin"]
-        clean_ins_acc_sum += clean_curves["ins_acc"]
-        clean_ins_margin_sum += clean_curves["ins_margin"]
+        clean_del_pred_prob_sum += clean_curves["del_pred_prob"]
+        clean_del_gt_prob_sum += clean_curves["del_gt_prob"]
+        clean_ins_pred_prob_sum += clean_curves["ins_pred_prob"]
+        clean_ins_gt_prob_sum += clean_curves["ins_gt_prob"]
 
-        adv_del_acc_sum += adv_curves["del_acc"]
-        adv_del_margin_sum += adv_curves["del_margin"]
-        adv_ins_acc_sum += adv_curves["ins_acc"]
-        adv_ins_margin_sum += adv_curves["ins_margin"]
+        adv_del_pred_prob_sum += adv_curves["del_pred_prob"]
+        adv_del_gt_prob_sum += adv_curves["del_gt_prob"]
+        adv_ins_pred_prob_sum += adv_curves["ins_pred_prob"]
+        adv_ins_gt_prob_sum += adv_curves["ins_gt_prob"]
 
         add_metrics(clean_table, compute_scalar_scores(clean_curves))
         add_metrics(adv_table, compute_scalar_scores(adv_curves))
@@ -594,16 +669,16 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
         raise RuntimeError(f"No samples were successfully evaluated for method: {method}")
 
     clean_mean = {
-        "del_acc": clean_del_acc_sum / count,
-        "del_margin": clean_del_margin_sum / count,
-        "ins_acc": clean_ins_acc_sum / count,
-        "ins_margin": clean_ins_margin_sum / count,
+        "del_pred_prob": clean_del_pred_prob_sum / count,
+        "del_gt_prob": clean_del_gt_prob_sum / count,
+        "ins_pred_prob": clean_ins_pred_prob_sum / count,
+        "ins_gt_prob": clean_ins_gt_prob_sum / count,
     }
     adv_mean = {
-        "del_acc": adv_del_acc_sum / count,
-        "del_margin": adv_del_margin_sum / count,
-        "ins_acc": adv_ins_acc_sum / count,
-        "ins_margin": adv_ins_margin_sum / count,
+        "del_pred_prob": adv_del_pred_prob_sum / count,
+        "del_gt_prob": adv_del_gt_prob_sum / count,
+        "ins_pred_prob": adv_ins_pred_prob_sum / count,
+        "ins_gt_prob": adv_ins_gt_prob_sum / count,
     }
 
     return {
@@ -622,7 +697,7 @@ def save_scalar_csv(path, rows):
     with open(path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["method", "split", "metric", "margin_prob", "acc", "num_samples_evaluated"],
+            fieldnames=["method", "split", "metric", "pred_prob", "gt_prob", "num_samples_evaluated"],
         )
         writer.writeheader()
         writer.writerows(rows)
@@ -630,7 +705,7 @@ def save_scalar_csv(path, rows):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Pred-only deletion/insertion/IMD evaluation and plotting for PGD attack outputs"
+        description="Deletion/insertion/IMD evaluation with pred and GT probabilities for PGD attack outputs"
     )
     parser.add_argument("--attack-root", required=True, help="Folder produced by pgd_attack.py")
     parser.add_argument(
@@ -645,6 +720,11 @@ def main():
     parser.add_argument("--max-samples", type=int, default=None, help="Optional cap on sample folders")
     parser.add_argument("--device", default=None, help="cuda or cpu")
     parser.add_argument("--output-prefix", default="pred_eval", help="Prefix for summary outputs")
+    parser.add_argument(
+        "--label-map",
+        default="imgnet1k_label.json",
+        help="ImageNet class index JSON for inferring GT labels by folder",
+    )
     parser.add_argument(
         "--save-per-method-plots",
         action="store_true",
@@ -680,6 +760,8 @@ def main():
     if not methods:
         raise ValueError("No explain methods found.")
 
+    folder_to_label = load_imagenet_label_map(args.label_map)
+
     clip_model, preprocess = clip.load(args.clip_model, device=device)
     clip_model.eval()
     explainer = CLIPExplainRunner(clipmodel=clip_model, preprocess=preprocess, device=device)
@@ -703,7 +785,7 @@ def main():
     results_by_method = {}
     summary = {
         "attack_root": args.attack_root,
-        "target": "pred",
+        "target": "pred_and_gt_prob",
         "clip_model": args.clip_model,
         "methods": {},
     }
@@ -714,6 +796,7 @@ def main():
             method=method,
             args=args,
             entries=entries,
+            folder_to_label=folder_to_label,
             clip_model=clip_model,
             explainer=explainer,
             zero_shot_weights=zero_shot_weights,
@@ -739,20 +822,20 @@ def main():
             "x_del": result["x_del"].tolist(),
             "x_ins": result["x_ins"].tolist(),
             "clean": {
-                "deletion_accuracy": result["clean_mean"]["del_acc"].tolist(),
-                "deletion_margin_prob": result["clean_mean"]["del_margin"].tolist(),
-                "insertion_accuracy": result["clean_mean"]["ins_acc"].tolist(),
-                "insertion_margin_prob": result["clean_mean"]["ins_margin"].tolist(),
+                "deletion_pred_prob": result["clean_mean"]["del_pred_prob"].tolist(),
+                "deletion_gt_prob": result["clean_mean"]["del_gt_prob"].tolist(),
+                "insertion_pred_prob": result["clean_mean"]["ins_pred_prob"].tolist(),
+                "insertion_gt_prob": result["clean_mean"]["ins_gt_prob"].tolist(),
             },
             "adv": {
-                "deletion_accuracy": result["adv_mean"]["del_acc"].tolist(),
-                "deletion_margin_prob": result["adv_mean"]["del_margin"].tolist(),
-                "insertion_accuracy": result["adv_mean"]["ins_acc"].tolist(),
-                "insertion_margin_prob": result["adv_mean"]["ins_margin"].tolist(),
+                "deletion_pred_prob": result["adv_mean"]["del_pred_prob"].tolist(),
+                "deletion_gt_prob": result["adv_mean"]["del_gt_prob"].tolist(),
+                "insertion_pred_prob": result["adv_mean"]["ins_pred_prob"].tolist(),
+                "insertion_gt_prob": result["adv_mean"]["ins_gt_prob"].tolist(),
             },
             "table_metrics": {
-                "columns": ["margin_prob", "acc"],
-                "target": "pred",
+                "columns": ["pred_prob", "gt_prob"],
+                "target": "pred_and_gt_prob",
                 "clean": result["clean_metrics"],
                 "adv": result["adv_metrics"],
             },
@@ -770,20 +853,20 @@ def main():
                         "method": method,
                         "split": split_name,
                         "metric": metric_name,
-                        "margin_prob": vals["margin_prob"],
-                        "acc": vals["acc"],
+                        "pred_prob": vals["pred_prob"],
+                        "gt_prob": vals["gt_prob"],
                         "num_samples_evaluated": result["num_samples_evaluated"],
                     }
                 )
 
-    margin_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_margin_prob.png")
-    acc_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_acc.png")
-    plot_multi_method_comparison(results_by_method, "margin", margin_comp_path)
-    plot_multi_method_comparison(results_by_method, "acc", acc_comp_path)
+    pred_prob_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_pred_prob.png")
+    gt_prob_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_gt_prob.png")
+    plot_multi_method_comparison(results_by_method, "pred_prob", pred_prob_comp_path)
+    plot_multi_method_comparison(results_by_method, "gt_prob", gt_prob_comp_path)
 
     summary["comparison_figures"] = {
-        "margin_prob": margin_comp_path,
-        "accuracy": acc_comp_path,
+        "pred_prob": pred_prob_comp_path,
+        "gt_prob": gt_prob_comp_path,
     }
 
     summary_path = os.path.join(args.attack_root, f"{args.output_prefix}_summary.json")
@@ -795,8 +878,8 @@ def main():
 
     print(f"Saved summary: {summary_path}")
     print(f"Saved scalar csv: {scalar_csv_path}")
-    print(f"Saved comparison (margin_prob): {margin_comp_path}")
-    print(f"Saved comparison (accuracy): {acc_comp_path}")
+    print(f"Saved comparison (pred_prob): {pred_prob_comp_path}")
+    print(f"Saved comparison (gt_prob): {gt_prob_comp_path}")
 
 
 if __name__ == "__main__":
