@@ -117,7 +117,7 @@ def metrics_for_batch(clip_model, zero_shot_weights, image_batch, pred_label, ba
             pred_prob = probs[:, pred_label]
             pred_prob_list.append(pred_prob.detach().cpu().numpy())
 
-            return np.concatenate(pred_prob_list)
+    return np.concatenate(pred_prob_list)
 
 
 def normalize_heatmap(hm):
