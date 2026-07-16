@@ -305,6 +305,8 @@ def load_image_from_tensor_or_png(tensor_path, png_path):
 def find_sample_entries(attack_root):
     entries = []
     for root, _, files in os.walk(attack_root):
+        print(files)
+        raise
         if "metadata.json" not in files:
             continue
 
