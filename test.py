@@ -477,9 +477,13 @@ def plot_sample_auc_panels(method, sample_folder, clean_curves, adv_curves, scor
 def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weights, normalize_only, device):
     clean_del_prob_sum = None
     clean_ins_prob_sum = None
+    clean_del_cos_sum = None
+    clean_ins_cos_sum = None
 
     adv_del_prob_sum = None
     adv_ins_prob_sum = None
+    adv_del_cos_sum = None
+    adv_ins_cos_sum = None
 
     x_del = None
     x_ins = None
@@ -530,7 +534,6 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
                 l_steps=args.L,
                 gap=args.gap,
                 batch_size=args.batch_size,
-                logit_scale=args.logit_scale,
                 precomputed_heatmap=clean_map,
             )
             adv_curves = build_curves_for_variant(
@@ -546,7 +549,6 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
                 l_steps=args.L,
                 gap=args.gap,
                 batch_size=args.batch_size,
-                logit_scale=args.logit_scale,
                 precomputed_heatmap=adv_map if adv_pred_label == clean_pred_label else None,
             )
         except Exception:
@@ -561,10 +563,21 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
                     sample_folder=sample_folder,
                     clean_curves=clean_curves,
                     adv_curves=adv_curves,
+                    score_key="prob",
                     out_name=sample_plot_name,
                 )
-                print(f"Saved sample AUC clean ({method}): {saved_paths['clean']}")
-                print(f"Saved sample AUC adv ({method}): {saved_paths['adv']}")
+                print(f"Saved sample AUC clean prob ({method}): {saved_paths['clean']}")
+                print(f"Saved sample AUC adv prob ({method}): {saved_paths['adv']}")
+                saved_paths = plot_sample_auc_panels(
+                    method=method,
+                    sample_folder=sample_folder,
+                    clean_curves=clean_curves,
+                    adv_curves=adv_curves,
+                    score_key="cos",
+                    out_name=sample_plot_name,
+                )
+                print(f"Saved sample AUC clean cosine ({method}): {saved_paths['clean']}")
+                print(f"Saved sample AUC adv cosine ({method}): {saved_paths['adv']}")
             except Exception:
                 pass
 
@@ -574,15 +587,23 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
 
             clean_del_prob_sum = np.zeros_like(clean_curves["del_prob"], dtype=np.float64)
             clean_ins_prob_sum = np.zeros_like(clean_curves["ins_prob"], dtype=np.float64)
+            clean_del_cos_sum = np.zeros_like(clean_curves["del_cos"], dtype=np.float64)
+            clean_ins_cos_sum = np.zeros_like(clean_curves["ins_cos"], dtype=np.float64)
 
             adv_del_prob_sum = np.zeros_like(adv_curves["del_prob"], dtype=np.float64)
             adv_ins_prob_sum = np.zeros_like(adv_curves["ins_prob"], dtype=np.float64)
+            adv_del_cos_sum = np.zeros_like(adv_curves["del_cos"], dtype=np.float64)
+            adv_ins_cos_sum = np.zeros_like(adv_curves["ins_cos"], dtype=np.float64)
 
         clean_del_prob_sum += clean_curves["del_prob"]
         clean_ins_prob_sum += clean_curves["ins_prob"]
+        clean_del_cos_sum += clean_curves["del_cos"]
+        clean_ins_cos_sum += clean_curves["ins_cos"]
 
         adv_del_prob_sum += adv_curves["del_prob"]
         adv_ins_prob_sum += adv_curves["ins_prob"]
+        adv_del_cos_sum += adv_curves["del_cos"]
+        adv_ins_cos_sum += adv_curves["ins_cos"]
 
         add_metrics(clean_table, compute_scalar_scores(clean_curves))
         add_metrics(adv_table, compute_scalar_scores(adv_curves))
@@ -594,10 +615,14 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
     clean_mean = {
         "del_prob": clean_del_prob_sum / count,
         "ins_prob": clean_ins_prob_sum / count,
+        "del_cos": clean_del_cos_sum / count,
+        "ins_cos": clean_ins_cos_sum / count,
     }
     adv_mean = {
         "del_prob": adv_del_prob_sum / count,
         "ins_prob": adv_ins_prob_sum / count,
+        "del_cos": adv_del_cos_sum / count,
+        "ins_cos": adv_ins_cos_sum / count,
     }
 
     return {
@@ -616,7 +641,7 @@ def save_scalar_csv(path, rows):
     with open(path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["method", "split", "metric", "prob", "num_samples_evaluated"],
+            fieldnames=["method", "split", "metric", "prob", "cosine", "num_samples_evaluated"],
         )
         writer.writeheader()
         writer.writerows(rows)
@@ -624,7 +649,7 @@ def save_scalar_csv(path, rows):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Deletion/insertion/IMD evaluation with predicted-class probability for PGD attack outputs"
+        description="Deletion/insertion/IMD evaluation with predicted-class probability and cosine for PGD attack outputs"
     )
     parser.add_argument("--attack-root", required=True, help="Folder produced by pgd_attack.py")
     parser.add_argument(
@@ -636,12 +661,6 @@ def main():
     parser.add_argument("--L", type=int, default=100, help="Total perturbation steps")
     parser.add_argument("--gap", type=int, default=10, help="Evaluate every N steps")
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size for metric inference")
-    parser.add_argument(
-        "--logit-scale",
-        type=float,
-        default=1.0,
-        help="Softmax logit scale; lower gives smoother probabilities, higher gives sharper 0/1 curves",
-    )
     parser.add_argument("--max-samples", type=int, default=None, help="Optional cap on sample folders")
     parser.add_argument("--device", default=None, help="cuda or cpu")
     parser.add_argument("--output-prefix", default="pred_eval", help="Prefix for summary outputs")
@@ -703,7 +722,7 @@ def main():
     results_by_method = {}
     summary = {
         "attack_root": args.attack_root,
-        "target": "pred_prob",
+        "target": "pred_prob_and_cosine",
         "clip_model": args.clip_model,
         "methods": {},
     }
@@ -725,15 +744,22 @@ def main():
         clean_fig_path = None
         adv_fig_path = None
         if args.save_per_method_plots:
-            clean_fig_path = os.path.join(args.attack_root, f"{args.output_prefix}_{method}_clean_curves.png")
-            adv_fig_path = os.path.join(args.attack_root, f"{args.output_prefix}_{method}_adv_curves.png")
+            clean_fig_path = {
+                "prob": os.path.join(args.attack_root, f"{args.output_prefix}_{method}_clean_prob_curves.png"),
+                "cosine": os.path.join(args.attack_root, f"{args.output_prefix}_{method}_clean_cosine_curves.png"),
+            }
+            adv_fig_path = {
+                "prob": os.path.join(args.attack_root, f"{args.output_prefix}_{method}_adv_prob_curves.png"),
+                "cosine": os.path.join(args.attack_root, f"{args.output_prefix}_{method}_adv_cosine_curves.png"),
+            }
             plot_split_curves(
                 method=method,
                 split_name="clean",
                 split_mean=result["clean_mean"],
                 x_del=result["x_del"],
                 x_ins=result["x_ins"],
-                out_path=clean_fig_path,
+                score_key="prob",
+                out_path=clean_fig_path["prob"],
             )
             plot_split_curves(
                 method=method,
@@ -741,7 +767,26 @@ def main():
                 split_mean=result["adv_mean"],
                 x_del=result["x_del"],
                 x_ins=result["x_ins"],
-                out_path=adv_fig_path,
+                score_key="prob",
+                out_path=adv_fig_path["prob"],
+            )
+            plot_split_curves(
+                method=method,
+                split_name="clean",
+                split_mean=result["clean_mean"],
+                x_del=result["x_del"],
+                x_ins=result["x_ins"],
+                score_key="cos",
+                out_path=clean_fig_path["cosine"],
+            )
+            plot_split_curves(
+                method=method,
+                split_name="adv",
+                split_mean=result["adv_mean"],
+                x_del=result["x_del"],
+                x_ins=result["x_ins"],
+                score_key="cos",
+                out_path=adv_fig_path["cosine"],
             )
 
         summary["methods"][method] = {
@@ -751,14 +796,18 @@ def main():
             "clean": {
                 "deletion_prob": result["clean_mean"]["del_prob"].tolist(),
                 "insertion_prob": result["clean_mean"]["ins_prob"].tolist(),
+                "deletion_cosine": result["clean_mean"]["del_cos"].tolist(),
+                "insertion_cosine": result["clean_mean"]["ins_cos"].tolist(),
             },
             "adv": {
                 "deletion_prob": result["adv_mean"]["del_prob"].tolist(),
                 "insertion_prob": result["adv_mean"]["ins_prob"].tolist(),
+                "deletion_cosine": result["adv_mean"]["del_cos"].tolist(),
+                "insertion_cosine": result["adv_mean"]["ins_cos"].tolist(),
             },
             "table_metrics": {
-                "columns": ["prob"],
-                "target": "pred_prob",
+                "columns": ["prob", "cosine"],
+                "target": "pred_prob_and_cosine",
                 "clean": result["clean_metrics"],
                 "adv": result["adv_metrics"],
             },
@@ -777,18 +826,25 @@ def main():
                         "split": split_name,
                         "metric": metric_name,
                         "prob": vals["prob"],
+                        "cosine": vals["cosine"],
                         "num_samples_evaluated": result["num_samples_evaluated"],
                     }
                 )
 
     clean_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_clean_prob.png")
     adv_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_adv_prob.png")
-    plot_multi_method_comparison(results_by_method, "clean", clean_comp_path)
-    plot_multi_method_comparison(results_by_method, "adv", adv_comp_path)
+    clean_cos_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_clean_cosine.png")
+    adv_cos_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_adv_cosine.png")
+    plot_multi_method_comparison(results_by_method, "clean", "prob", clean_comp_path)
+    plot_multi_method_comparison(results_by_method, "adv", "prob", adv_comp_path)
+    plot_multi_method_comparison(results_by_method, "clean", "cos", clean_cos_comp_path)
+    plot_multi_method_comparison(results_by_method, "adv", "cos", adv_cos_comp_path)
 
     summary["comparison_figures"] = {
         "clean_prob": clean_comp_path,
         "adv_prob": adv_comp_path,
+        "clean_cosine": clean_cos_comp_path,
+        "adv_cosine": adv_cos_comp_path,
     }
 
     summary_path = os.path.join(args.attack_root, f"{args.output_prefix}_summary.json")
@@ -802,6 +858,8 @@ def main():
     print(f"Saved scalar csv: {scalar_csv_path}")
     print(f"Saved comparison (clean prob): {clean_comp_path}")
     print(f"Saved comparison (adv prob): {adv_comp_path}")
+    print(f"Saved comparison (clean cosine): {clean_cos_comp_path}")
+    print(f"Saved comparison (adv cosine): {adv_cos_comp_path}")
 
 
 if __name__ == "__main__":
