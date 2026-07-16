@@ -53,19 +53,23 @@ def deletion_sequence(image, heatmap, normalize_only, device, l_steps, cal_gap):
     grids = make_grids(h, w)
     order = np.argsort(-heatmap.reshape(-1))
     area = h * w
-    pixel_once = max(1, int(area / (2 * l_steps)))
+    step_bounds = np.linspace(0, area, l_steps + 1, dtype=np.int64)
 
     tensors = []
     fractions = []
 
     for step in range(1, l_steps + 1):
-        slice_idx = order[(step - 1) * pixel_once : step * pixel_once]
+        start = int(step_bounds[step - 1])
+        end = int(step_bounds[step])
+        slice_idx = order[start:end]
+        if slice_idx.size == 0:
+            continue
         image_array = random_pixel(image_array, grids[slice_idx].tolist())
 
         if step % cal_gap == 0:
             pil_image = Image.fromarray(np.uint8(image_array))
             tensors.append(normalize_only(pil_image).to(device).unsqueeze(0))
-            fractions.append(min(1.0, (step * pixel_once) / area))
+            fractions.append(end / area)
 
     return torch.cat(tensors, dim=0), np.array(fractions)
 
@@ -77,20 +81,24 @@ def insertion_sequence(image, heatmap, normalize_only, device, l_steps, cal_gap)
     grids = make_grids(h, w)
     order = np.argsort(-heatmap.reshape(-1))
     area = h * w
-    pixel_once = max(1, int(area / (2 * l_steps)))
+    step_bounds = np.linspace(0, area, l_steps + 1, dtype=np.int64)
 
     input_img = np.zeros(image_array.shape, dtype=np.uint8)
     tensors = []
     fractions = []
 
     for step in range(1, l_steps + 1):
-        slice_idx = order[(step - 1) * pixel_once : step * pixel_once]
+        start = int(step_bounds[step - 1])
+        end = int(step_bounds[step])
+        slice_idx = order[start:end]
+        if slice_idx.size == 0:
+            continue
         input_img = add_pixel(image_array, input_img, grids[slice_idx].tolist())
 
         if step % cal_gap == 0:
             pil_image = Image.fromarray(np.uint8(input_img))
             tensors.append(normalize_only(pil_image).to(device).unsqueeze(0))
-            fractions.append(min(1.0, (step * pixel_once) / area))
+            fractions.append(end / area)
 
     return torch.cat(tensors, dim=0), np.array(fractions)
 
