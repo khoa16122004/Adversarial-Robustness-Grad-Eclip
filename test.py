@@ -305,7 +305,7 @@ def load_image_from_tensor_or_png(tensor_path, png_path):
 def find_sample_entries(attack_root):
     entries = []
     for root, _, files in os.walk(attack_root):
-        print(files)
+        # print(files)
         if "metadata.json" not in files:
             continue
 
@@ -314,7 +314,7 @@ def find_sample_entries(attack_root):
             with open(metadata_path, "r", encoding="utf-8") as f:
                 meta = json.load(f)
         except Exception:
-            raise
+            # raise
             continue
 
         clean_rel = meta.get("clean_image_path")
@@ -638,6 +638,8 @@ def evaluate_method(method, args, entries, folder_to_label, clip_model, explaine
                 )
                 print(f"Saved sample AUC ({method}): {saved_path}")
             except Exception:
+                print("Dog")
+                raise
                 pass
 
         if x_del is None:
