@@ -513,6 +513,37 @@ def plot_sample_auc_panels(method, sample_folder, clean_curves, adv_curves, scor
     return saved_paths
 
 
+def plot_sample_clean_adv_overlay(method, sample_folder, clean_curves, adv_curves, score_key, out_name):
+    fig, axes = plt.subplots(1, 2, figsize=(8.8, 4), dpi=120)
+    y_label = "Prob" if score_key == "prob" else "Cosine"
+    clean_color = "#2ca02c"
+    adv_color = "#ff7f0e"
+
+    panels = [
+        (axes[0], clean_curves["x_del"], clean_curves[f"del_{score_key}"], adv_curves[f"del_{score_key}"], "Deletion"),
+        (axes[1], clean_curves["x_ins"], clean_curves[f"ins_{score_key}"], adv_curves[f"ins_{score_key}"], "Insertion"),
+    ]
+
+    for ax, x, y_clean, y_adv, title in panels:
+        ax.plot(x, y_clean, color=clean_color, linewidth=1.8, marker="o", label="Clean")
+        ax.plot(x, y_adv, color=adv_color, linewidth=1.8, marker="o", label="Adv")
+        ax.set_title(title)
+        ax.set_xlabel("Step")
+        ax.set_ylabel(y_label)
+        ax.set_xlim(0.0, max(1.0, float(np.max(x))))
+        ax.grid(True, alpha=0.3, linestyle="--")
+        if score_key == "prob":
+            ax.set_ylim(0.0, 1.0)
+        ax.legend(loc="best", frameon=False)
+
+    plt.suptitle(f"{method} | sample clean vs adv | {score_key}", fontsize=11)
+    plt.tight_layout()
+    out_path = os.path.join(sample_folder, f"overlay_{score_key}_{out_name}")
+    plt.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+    return out_path
+
+
 def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weights, normalize_only, device):
     clean_del_prob_sum = None
     clean_ins_prob_sum = None
@@ -617,6 +648,26 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
                 )
                 print(f"Saved sample AUC clean cosine ({method}): {saved_paths['clean']}")
                 print(f"Saved sample AUC adv cosine ({method}): {saved_paths['adv']}")
+
+                overlay_prob_path = plot_sample_clean_adv_overlay(
+                    method=method,
+                    sample_folder=sample_folder,
+                    clean_curves=clean_curves,
+                    adv_curves=adv_curves,
+                    score_key="prob",
+                    out_name=sample_plot_name,
+                )
+                print(f"Saved sample overlay clean-vs-adv prob ({method}): {overlay_prob_path}")
+
+                overlay_cos_path = plot_sample_clean_adv_overlay(
+                    method=method,
+                    sample_folder=sample_folder,
+                    clean_curves=clean_curves,
+                    adv_curves=adv_curves,
+                    score_key="cos",
+                    out_name=sample_plot_name,
+                )
+                print(f"Saved sample overlay clean-vs-adv cosine ({method}): {overlay_cos_path}")
             except Exception:
                 pass
 
