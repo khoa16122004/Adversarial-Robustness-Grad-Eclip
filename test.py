@@ -482,6 +482,7 @@ def curve_auc(x, y):
 
 
 def plot_sample_auc_panels(method, sample_folder, clean_curves, adv_curves, out_name):
+    raise
     fig, axes = plt.subplots(2, 2, figsize=(8, 8), dpi=120)
     panels = [
         (
