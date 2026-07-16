@@ -438,6 +438,38 @@ def plot_multi_method_comparison(results_by_method, score_key, out_path):
     plt.close(fig)
 
 
+def curve_auc(x, y):
+    return float(np.trapz(y, x))
+
+
+def plot_sample_auc_panels(method, sample_folder, clean_curves, adv_curves, out_name):
+    fig, axes = plt.subplots(2, 2, figsize=(8, 8), dpi=120)
+    panels = [
+        (axes[0, 0], clean_curves["x_del"], clean_curves["del_margin"], "Deletion"),
+        (axes[0, 1], clean_curves["x_ins"], clean_curves["ins_margin"], "Insertion"),
+        (axes[1, 0], adv_curves["x_del"], adv_curves["del_margin"], "Deletion"),
+        (axes[1, 1], adv_curves["x_ins"], adv_curves["ins_margin"], "Insertion"),
+    ]
+
+    for ax, x, y, title in panels:
+        ax.plot(x, y, color="#1f77b4", linewidth=1.5)
+        ax.fill_between(x, y, color="#1f77b4", alpha=0.35)
+        ax.set_title(title)
+        ax.set_xlim(0.0, 1.0)
+        ax.set_ylim(0.0, 1.0)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        auc_val = curve_auc(x, y)
+        ax.text(0.5, 0.5, f"AUC={auc_val:.3f}", ha="center", va="center", fontsize=16, transform=ax.transAxes)
+
+    plt.suptitle(f"{method} | margin probability", fontsize=11)
+    plt.tight_layout()
+    out_path = os.path.join(sample_folder, out_name)
+    plt.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+    return out_path
+
+
 def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weights, normalize_only, device):
     clean_del_acc_sum = None
     clean_del_margin_sum = None
@@ -515,6 +547,20 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
             )
         except Exception:
             continue
+
+        if args.save_per_sample_plots:
+            sample_folder = os.path.dirname(entry["metadata_path"])
+            sample_plot_name = f"{args.output_prefix}_{method}_sample_auc.png"
+            try:
+                plot_sample_auc_panels(
+                    method=method,
+                    sample_folder=sample_folder,
+                    clean_curves=clean_curves,
+                    adv_curves=adv_curves,
+                    out_name=sample_plot_name,
+                )
+            except Exception:
+                pass
 
         if x_del is None:
             x_del = clean_curves["x_del"]
@@ -603,6 +649,11 @@ def main():
         "--save-per-method-plots",
         action="store_true",
         help="Also save one 2x2 curve figure per method",
+    )
+    parser.add_argument(
+        "--save-per-sample-plots",
+        action="store_true",
+        help="Save a 2x2 Deletion/Insertion AUC chart in each sample folder",
     )
     args = parser.parse_args()
 
