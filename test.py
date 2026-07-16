@@ -103,7 +103,7 @@ def insertion_sequence(image, heatmap, normalize_only, device, l_steps, cal_gap)
     return torch.cat(tensors, dim=0), np.array(steps, dtype=np.int32)
 
 
-def metrics_for_batch(clip_model, zero_shot_weights, image_batch, pred_label, batch_size):
+def metrics_for_batch(clip_model, zero_shot_weights, image_batch, pred_label, batch_size, logit_scale):
     prob_list = []
 
     with torch.no_grad():
@@ -111,7 +111,8 @@ def metrics_for_batch(clip_model, zero_shot_weights, image_batch, pred_label, ba
         for start in range(0, total, batch_size):
             end = min(start + batch_size, total)
             feats = clip_model.encode_image(image_batch[start:end])
-            logits = 100.0 * feats @ zero_shot_weights
+            feats = feats / feats.norm(dim=-1, keepdim=True)
+            logits = logit_scale * (feats @ zero_shot_weights)
             probs = logits.softmax(dim=-1)
             pred_prob = probs[:, pred_label]
             prob_list.append(pred_prob.detach().cpu().numpy())
@@ -144,6 +145,7 @@ def build_curves_for_variant(
     l_steps,
     gap,
     batch_size,
+    logit_scale,
     precomputed_heatmap=None,
 ):
     w, h = image.size
@@ -165,6 +167,7 @@ def build_curves_for_variant(
         original_tensor,
         pred_label,
         batch_size,
+        logit_scale,
     )
 
     black_img = Image.fromarray(np.zeros((h, w, 3), dtype=np.uint8))
@@ -175,6 +178,7 @@ def build_curves_for_variant(
         black_tensor,
         pred_label,
         batch_size,
+        logit_scale,
     )
 
     del_batch, del_steps = deletion_sequence(image, heatmap, normalize_only, device, l_steps, gap)
@@ -186,6 +190,7 @@ def build_curves_for_variant(
         del_batch,
         pred_label,
         batch_size,
+        logit_scale,
     )
     ins_pred_prob = metrics_for_batch(
         clip_model,
@@ -193,6 +198,7 @@ def build_curves_for_variant(
         ins_batch,
         pred_label,
         batch_size,
+        logit_scale,
     )
 
     x_del = np.concatenate(([0], del_steps))
@@ -509,6 +515,7 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
                 l_steps=args.L,
                 gap=args.gap,
                 batch_size=args.batch_size,
+                logit_scale=args.logit_scale,
                 precomputed_heatmap=clean_map,
             )
             adv_curves = build_curves_for_variant(
@@ -524,6 +531,7 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
                 l_steps=args.L,
                 gap=args.gap,
                 batch_size=args.batch_size,
+                logit_scale=args.logit_scale,
                 precomputed_heatmap=adv_map if adv_pred_label == clean_pred_label else None,
             )
         except Exception:
@@ -613,6 +621,12 @@ def main():
     parser.add_argument("--L", type=int, default=100, help="Total perturbation steps")
     parser.add_argument("--gap", type=int, default=10, help="Evaluate every N steps")
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size for metric inference")
+    parser.add_argument(
+        "--logit-scale",
+        type=float,
+        default=1.0,
+        help="Softmax logit scale; lower gives smoother probabilities, higher gives sharper 0/1 curves",
+    )
     parser.add_argument("--max-samples", type=int, default=None, help="Optional cap on sample folders")
     parser.add_argument("--device", default=None, help="cuda or cpu")
     parser.add_argument("--output-prefix", default="pred_eval", help="Prefix for summary outputs")
