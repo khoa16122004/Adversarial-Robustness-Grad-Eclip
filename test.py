@@ -627,13 +627,14 @@ def evaluate_method(method, args, entries, folder_to_label, clip_model, explaine
             sample_folder = os.path.dirname(entry["metadata_path"])
             sample_plot_name = f"{args.output_prefix}_{method}_sample_auc.png"
             try:
-                plot_sample_auc_panels(
+                saved_path = plot_sample_auc_panels(
                     method=method,
                     sample_folder=sample_folder,
                     clean_curves=clean_curves,
                     adv_curves=adv_curves,
                     out_name=sample_plot_name,
                 )
+                print(f"Saved sample AUC ({method}): {saved_path}")
             except Exception:
                 pass
 
