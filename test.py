@@ -95,12 +95,11 @@ def insertion_sequence(image, heatmap, normalize_only, device, l_steps, cal_gap)
     return torch.cat(tensors, dim=0), np.array(fractions)
 
 
-def metrics_for_batch(clip_model, zero_shot_weights, image_batch, target_label, target_text_embedding, batch_size):
+def metrics_for_batch(clip_model, zero_shot_weights, image_batch, target_label, batch_size):
     acc_list = []
-    cos_list = []
+    margin_list = []
 
     with torch.no_grad():
-        text_feat = target_text_embedding / target_text_embedding.norm(dim=-1, keepdim=True)
         total = image_batch.shape[0]
         for start in range(0, total, batch_size):
             end = min(start + batch_size, total)
@@ -110,13 +109,13 @@ def metrics_for_batch(clip_model, zero_shot_weights, image_batch, target_label, 
             preds = probs.argmax(dim=-1)
             acc = (preds == target_label).float()
 
-            feats = feats / feats.norm(dim=-1, keepdim=True)
-            cos = (feats @ text_feat.T).squeeze(-1)
+            top2 = torch.topk(probs, k=2, dim=-1).values
+            margin = top2[:, 0] - top2[:, 1]
 
             acc_list.append(acc.detach().cpu().numpy())
-            cos_list.append(cos.detach().cpu().numpy())
+            margin_list.append(margin.detach().cpu().numpy())
 
-    return np.concatenate(acc_list), np.concatenate(cos_list)
+    return np.concatenate(acc_list), np.concatenate(margin_list)
 
 
 def normalize_heatmap(hm):
@@ -158,43 +157,39 @@ def build_curves_for_variant(
         heatmap = normalize_heatmap(heatmap)
 
     original_tensor = normalize_only(image).unsqueeze(0).to(device)
-    original_acc, original_cos = metrics_for_batch(
+    original_acc, original_margin = metrics_for_batch(
         clip_model,
         zero_shot_weights,
         original_tensor,
         target_label,
-        target_text_embedding,
         batch_size,
     )
 
     black_img = Image.fromarray(np.zeros((h, w, 3), dtype=np.uint8))
     black_tensor = normalize_only(black_img).unsqueeze(0).to(device)
-    black_acc, black_cos = metrics_for_batch(
+    black_acc, black_margin = metrics_for_batch(
         clip_model,
         zero_shot_weights,
         black_tensor,
         target_label,
-        target_text_embedding,
         batch_size,
     )
 
     del_batch, del_fraction = deletion_sequence(image, heatmap, normalize_only, device, l_steps, gap)
     ins_batch, ins_fraction = insertion_sequence(image, heatmap, normalize_only, device, l_steps, gap)
 
-    del_acc, del_cos = metrics_for_batch(
+    del_acc, del_margin = metrics_for_batch(
         clip_model,
         zero_shot_weights,
         del_batch,
         target_label,
-        target_text_embedding,
         batch_size,
     )
-    ins_acc, ins_cos = metrics_for_batch(
+    ins_acc, ins_margin = metrics_for_batch(
         clip_model,
         zero_shot_weights,
         ins_batch,
         target_label,
-        target_text_embedding,
         batch_size,
     )
 
@@ -205,9 +200,9 @@ def build_curves_for_variant(
         "x_del": x_del,
         "x_ins": x_ins,
         "del_acc": np.concatenate(([original_acc[0]], del_acc)),
-        "del_cos": np.concatenate(([original_cos[0]], del_cos)),
+        "del_margin": np.concatenate(([original_margin[0]], del_margin)),
         "ins_acc": np.concatenate(([black_acc[0]], ins_acc)),
-        "ins_cos": np.concatenate(([black_cos[0]], ins_cos)),
+        "ins_margin": np.concatenate(([black_margin[0]], ins_margin)),
     }
 
 
@@ -219,21 +214,21 @@ def step_mean(curve):
 
 def compute_scalar_scores(curves):
     del_acc = step_mean(curves["del_acc"])
-    del_cos = step_mean(curves["del_cos"])
+    del_margin = step_mean(curves["del_margin"])
     ins_acc = step_mean(curves["ins_acc"])
-    ins_cos = step_mean(curves["ins_cos"])
+    ins_margin = step_mean(curves["ins_margin"])
     return {
-        "deletion": {"acc": del_acc, "cosine": del_cos},
-        "insertion": {"acc": ins_acc, "cosine": ins_cos},
-        "imd": {"acc": ins_acc - del_acc, "cosine": ins_cos - del_cos},
+        "deletion": {"acc": del_acc, "margin_prob": del_margin},
+        "insertion": {"acc": ins_acc, "margin_prob": ins_margin},
+        "imd": {"acc": ins_acc - del_acc, "margin_prob": ins_margin - del_margin},
     }
 
 
 def init_metrics_bucket():
     return {
-        "deletion": {"acc": 0.0, "cosine": 0.0},
-        "insertion": {"acc": 0.0, "cosine": 0.0},
-        "imd": {"acc": 0.0, "cosine": 0.0},
+        "deletion": {"acc": 0.0, "margin_prob": 0.0},
+        "insertion": {"acc": 0.0, "margin_prob": 0.0},
+        "imd": {"acc": 0.0, "margin_prob": 0.0},
         "count": 0,
     }
 
@@ -241,7 +236,7 @@ def init_metrics_bucket():
 def add_metrics(bucket, scores):
     for metric_name in ["deletion", "insertion", "imd"]:
         bucket[metric_name]["acc"] += float(scores[metric_name]["acc"])
-        bucket[metric_name]["cosine"] += float(scores[metric_name]["cosine"])
+        bucket[metric_name]["margin_prob"] += float(scores[metric_name]["margin_prob"])
     bucket["count"] += 1
 
 
@@ -251,7 +246,7 @@ def finalize_metrics(bucket):
     for metric_name in ["deletion", "insertion", "imd"]:
         out[metric_name] = {
             "acc": bucket[metric_name]["acc"] / c,
-            "cosine": bucket[metric_name]["cosine"] / c,
+            "margin_prob": bucket[metric_name]["margin_prob"] / c,
         }
     out["count"] = bucket["count"]
     return out
@@ -352,28 +347,28 @@ def plot_single_method_curves(method, clean_mean, adv_mean, x_del, x_ins, out_pa
     fig, axes = plt.subplots(2, 2, figsize=(14, 10), dpi=120)
 
     axes[0, 0].plot(x_del, clean_mean["del_acc"], marker="o", label="Deletion Acc")
-    axes[0, 0].plot(x_del, clean_mean["del_cos"], marker="o", label="Deletion Cos")
+    axes[0, 0].plot(x_del, clean_mean["del_margin"], marker="o", label="Deletion Margin")
     axes[0, 0].set_title("Clean - Deletion")
     axes[0, 0].set_xlabel("Removed Pixel Ratio")
     axes[0, 0].set_ylabel("Score")
     axes[0, 0].grid(True, alpha=0.3)
 
     axes[0, 1].plot(x_ins, clean_mean["ins_acc"], marker="o", label="Insertion Acc")
-    axes[0, 1].plot(x_ins, clean_mean["ins_cos"], marker="o", label="Insertion Cos")
+    axes[0, 1].plot(x_ins, clean_mean["ins_margin"], marker="o", label="Insertion Margin")
     axes[0, 1].set_title("Clean - Insertion")
     axes[0, 1].set_xlabel("Inserted Pixel Ratio")
     axes[0, 1].set_ylabel("Score")
     axes[0, 1].grid(True, alpha=0.3)
 
     axes[1, 0].plot(x_del, adv_mean["del_acc"], marker="o", label="Deletion Acc")
-    axes[1, 0].plot(x_del, adv_mean["del_cos"], marker="o", label="Deletion Cos")
+    axes[1, 0].plot(x_del, adv_mean["del_margin"], marker="o", label="Deletion Margin")
     axes[1, 0].set_title("Adv - Deletion")
     axes[1, 0].set_xlabel("Removed Pixel Ratio")
     axes[1, 0].set_ylabel("Score")
     axes[1, 0].grid(True, alpha=0.3)
 
     axes[1, 1].plot(x_ins, adv_mean["ins_acc"], marker="o", label="Insertion Acc")
-    axes[1, 1].plot(x_ins, adv_mean["ins_cos"], marker="o", label="Insertion Cos")
+    axes[1, 1].plot(x_ins, adv_mean["ins_margin"], marker="o", label="Insertion Margin")
     axes[1, 1].set_title("Adv - Insertion")
     axes[1, 1].set_xlabel("Inserted Pixel Ratio")
     axes[1, 1].set_ylabel("Score")
@@ -424,7 +419,7 @@ def plot_multi_method_comparison(results_by_method, score_key, out_path):
     axes[0, 1].set_xlabel("Inserted Pixel Ratio")
     axes[1, 1].set_xlabel("Inserted Pixel Ratio")
 
-    y_label = "Cosine" if score_key == "cos" else "Accuracy"
+    y_label = "Margin Prob" if score_key == "margin" else "Accuracy"
     for ax in axes.flatten():
         ax.set_ylabel(y_label)
         ax.grid(True, alpha=0.25, linestyle="--")
