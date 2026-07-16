@@ -132,9 +132,8 @@ def insertion_sequence(image, heatmap, normalize_only, device, l_steps, cal_gap)
     return torch.cat(tensors, dim=0), np.array(fractions)
 
 
-def metrics_for_batch(clip_model, zero_shot_weights, image_batch, pred_label, gt_label, batch_size):
+def metrics_for_batch(clip_model, zero_shot_weights, image_batch, pred_label, batch_size):
     pred_prob_list = []
-    gt_prob_list = []
 
     with torch.no_grad():
         total = image_batch.shape[0]
@@ -145,12 +144,9 @@ def metrics_for_batch(clip_model, zero_shot_weights, image_batch, pred_label, gt
             probs = logits.softmax(dim=-1)
 
             pred_prob = probs[:, pred_label]
-            gt_prob = probs[:, gt_label]
-
             pred_prob_list.append(pred_prob.detach().cpu().numpy())
-            gt_prob_list.append(gt_prob.detach().cpu().numpy())
 
-    return np.concatenate(pred_prob_list), np.concatenate(gt_prob_list)
+            return np.concatenate(pred_prob_list)
 
 
 def normalize_heatmap(hm):
@@ -169,7 +165,6 @@ def build_curves_for_variant(
     image,
     explain_label,
     pred_label,
-    gt_label,
     method,
     clip_model,
     explainer,
@@ -194,43 +189,39 @@ def build_curves_for_variant(
         heatmap = normalize_heatmap(heatmap)
 
     original_tensor = normalize_only(image).unsqueeze(0).to(device)
-    original_pred_prob, original_gt_prob = metrics_for_batch(
+    original_pred_prob = metrics_for_batch(
         clip_model,
         zero_shot_weights,
         original_tensor,
         pred_label,
-        gt_label,
         batch_size,
     )
 
     black_img = Image.fromarray(np.zeros((h, w, 3), dtype=np.uint8))
     black_tensor = normalize_only(black_img).unsqueeze(0).to(device)
-    black_pred_prob, black_gt_prob = metrics_for_batch(
+    black_pred_prob = metrics_for_batch(
         clip_model,
         zero_shot_weights,
         black_tensor,
         pred_label,
-        gt_label,
         batch_size,
     )
 
     del_batch, del_fraction = deletion_sequence(image, heatmap, normalize_only, device, l_steps, gap)
     ins_batch, ins_fraction = insertion_sequence(image, heatmap, normalize_only, device, l_steps, gap)
 
-    del_pred_prob, del_gt_prob = metrics_for_batch(
+    del_pred_prob = metrics_for_batch(
         clip_model,
         zero_shot_weights,
         del_batch,
         pred_label,
-        gt_label,
         batch_size,
     )
-    ins_pred_prob, ins_gt_prob = metrics_for_batch(
+    ins_pred_prob = metrics_for_batch(
         clip_model,
         zero_shot_weights,
         ins_batch,
         pred_label,
-        gt_label,
         batch_size,
     )
 
@@ -241,9 +232,7 @@ def build_curves_for_variant(
         "x_del": x_del,
         "x_ins": x_ins,
         "del_pred_prob": np.concatenate(([original_pred_prob[0]], del_pred_prob)),
-        "del_gt_prob": np.concatenate(([original_gt_prob[0]], del_gt_prob)),
         "ins_pred_prob": np.concatenate(([black_pred_prob[0]], ins_pred_prob)),
-        "ins_gt_prob": np.concatenate(([black_gt_prob[0]], ins_gt_prob)),
     }
 
 
@@ -255,21 +244,19 @@ def step_mean(curve):
 
 def compute_scalar_scores(curves):
     del_pred_prob = step_mean(curves["del_pred_prob"])
-    del_gt_prob = step_mean(curves["del_gt_prob"])
     ins_pred_prob = step_mean(curves["ins_pred_prob"])
-    ins_gt_prob = step_mean(curves["ins_gt_prob"])
     return {
-        "deletion": {"pred_prob": del_pred_prob, "gt_prob": del_gt_prob},
-        "insertion": {"pred_prob": ins_pred_prob, "gt_prob": ins_gt_prob},
-        "imd": {"pred_prob": ins_pred_prob - del_pred_prob, "gt_prob": ins_gt_prob - del_gt_prob},
+        "deletion": {"pred_prob": del_pred_prob},
+        "insertion": {"pred_prob": ins_pred_prob},
+        "imd": {"pred_prob": ins_pred_prob - del_pred_prob},
     }
 
 
 def init_metrics_bucket():
     return {
-        "deletion": {"pred_prob": 0.0, "gt_prob": 0.0},
-        "insertion": {"pred_prob": 0.0, "gt_prob": 0.0},
-        "imd": {"pred_prob": 0.0, "gt_prob": 0.0},
+        "deletion": {"pred_prob": 0.0},
+        "insertion": {"pred_prob": 0.0},
+        "imd": {"pred_prob": 0.0},
         "count": 0,
     }
 
@@ -277,7 +264,6 @@ def init_metrics_bucket():
 def add_metrics(bucket, scores):
     for metric_name in ["deletion", "insertion", "imd"]:
         bucket[metric_name]["pred_prob"] += float(scores[metric_name]["pred_prob"])
-        bucket[metric_name]["gt_prob"] += float(scores[metric_name]["gt_prob"])
     bucket["count"] += 1
 
 
@@ -287,7 +273,6 @@ def finalize_metrics(bucket):
     for metric_name in ["deletion", "insertion", "imd"]:
         out[metric_name] = {
             "pred_prob": bucket[metric_name]["pred_prob"] / c,
-            "gt_prob": bucket[metric_name]["gt_prob"] / c,
         }
     out["count"] = bucket["count"]
     return out
