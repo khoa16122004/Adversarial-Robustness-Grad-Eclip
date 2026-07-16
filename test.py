@@ -313,6 +313,7 @@ def find_sample_entries(attack_root):
             with open(metadata_path, "r", encoding="utf-8") as f:
                 meta = json.load(f)
         except Exception:
+            raise
             continue
 
         clean_rel = meta.get("clean_image_path")
