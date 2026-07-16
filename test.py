@@ -439,15 +439,19 @@ def plot_clean_adv_overlay(method, result, score_key, out_path):
     clean_color = "#2ca02c"  # green
     adv_color = "#ff7f0e"  # orange
 
-    axes[0].plot(x_del, clean[f"del_{score_key}"], color=clean_color, marker="o", linewidth=2.0, label="Clean")
-    axes[0].plot(x_del, adv[f"del_{score_key}"], color=adv_color, marker="o", linewidth=2.0, label="Adv")
+    axes[0].plot(x_del, clean[f"del_{score_key}"], color=clean_color, linewidth=2.0, label="Clean")
+    axes[0].fill_between(x_del, clean[f"del_{score_key}"], color=clean_color, alpha=0.22)
+    axes[0].plot(x_del, adv[f"del_{score_key}"], color=adv_color, linewidth=2.0, label="Adv")
+    axes[0].fill_between(x_del, adv[f"del_{score_key}"], color=adv_color, alpha=0.22)
     axes[0].set_title("Deletion")
     axes[0].set_xlabel("Step")
     axes[0].set_ylabel(y_label)
     axes[0].grid(True, alpha=0.3, linestyle="--")
 
-    axes[1].plot(x_ins, clean[f"ins_{score_key}"], color=clean_color, marker="o", linewidth=2.0, label="Clean")
-    axes[1].plot(x_ins, adv[f"ins_{score_key}"], color=adv_color, marker="o", linewidth=2.0, label="Adv")
+    axes[1].plot(x_ins, clean[f"ins_{score_key}"], color=clean_color, linewidth=2.0, label="Clean")
+    axes[1].fill_between(x_ins, clean[f"ins_{score_key}"], color=clean_color, alpha=0.22)
+    axes[1].plot(x_ins, adv[f"ins_{score_key}"], color=adv_color, linewidth=2.0, label="Adv")
+    axes[1].fill_between(x_ins, adv[f"ins_{score_key}"], color=adv_color, alpha=0.22)
     axes[1].set_title("Insertion")
     axes[1].set_xlabel("Step")
     axes[1].set_ylabel(y_label)
@@ -525,8 +529,10 @@ def plot_sample_clean_adv_overlay(method, sample_folder, clean_curves, adv_curve
     ]
 
     for ax, x, y_clean, y_adv, title in panels:
-        ax.plot(x, y_clean, color=clean_color, linewidth=1.8, marker="o", label="Clean")
-        ax.plot(x, y_adv, color=adv_color, linewidth=1.8, marker="o", label="Adv")
+        ax.plot(x, y_clean, color=clean_color, linewidth=1.8, label="Clean")
+        ax.fill_between(x, y_clean, color=clean_color, alpha=0.22)
+        ax.plot(x, y_adv, color=adv_color, linewidth=1.8, label="Adv")
+        ax.fill_between(x, y_adv, color=adv_color, alpha=0.22)
         ax.set_title(title)
         ax.set_xlabel("Step")
         ax.set_ylabel(y_label)
