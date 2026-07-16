@@ -56,7 +56,7 @@ def deletion_sequence(image, heatmap, normalize_only, device, l_steps, cal_gap):
     step_bounds = np.linspace(0, area, l_steps + 1, dtype=np.int64)
 
     tensors = []
-    fractions = []
+    steps = []
 
     for step in range(1, l_steps + 1):
         start = int(step_bounds[step - 1])
@@ -66,12 +66,12 @@ def deletion_sequence(image, heatmap, normalize_only, device, l_steps, cal_gap):
             continue
         image_array = random_pixel(image_array, grids[slice_idx].tolist())
 
-        if step % cal_gap == 0:
+        if step % cal_gap == 0 or step == l_steps:
             pil_image = Image.fromarray(np.uint8(image_array))
             tensors.append(normalize_only(pil_image).to(device).unsqueeze(0))
-            fractions.append(end / area)
+            steps.append(step)
 
-    return torch.cat(tensors, dim=0), np.array(fractions)
+    return torch.cat(tensors, dim=0), np.array(steps, dtype=np.int32)
 
 
 def insertion_sequence(image, heatmap, normalize_only, device, l_steps, cal_gap):
@@ -85,7 +85,7 @@ def insertion_sequence(image, heatmap, normalize_only, device, l_steps, cal_gap)
 
     input_img = np.zeros(image_array.shape, dtype=np.uint8)
     tensors = []
-    fractions = []
+    steps = []
 
     for step in range(1, l_steps + 1):
         start = int(step_bounds[step - 1])
@@ -95,29 +95,28 @@ def insertion_sequence(image, heatmap, normalize_only, device, l_steps, cal_gap)
             continue
         input_img = add_pixel(image_array, input_img, grids[slice_idx].tolist())
 
-        if step % cal_gap == 0:
+        if step % cal_gap == 0 or step == l_steps:
             pil_image = Image.fromarray(np.uint8(input_img))
             tensors.append(normalize_only(pil_image).to(device).unsqueeze(0))
-            fractions.append(end / area)
+            steps.append(step)
 
-    return torch.cat(tensors, dim=0), np.array(fractions)
+    return torch.cat(tensors, dim=0), np.array(steps, dtype=np.int32)
 
 
-def metrics_for_batch(clip_model, zero_shot_weights, image_batch, pred_label, batch_size):
-    pred_prob_list = []
+def metrics_for_batch(clip_model, image_batch, target_text_embedding, batch_size):
+    cos_list = []
 
     with torch.no_grad():
+        text_feat = target_text_embedding / target_text_embedding.norm(dim=-1, keepdim=True)
         total = image_batch.shape[0]
         for start in range(0, total, batch_size):
             end = min(start + batch_size, total)
             feats = clip_model.encode_image(image_batch[start:end])
-            logits = 100.0 * feats @ zero_shot_weights
-            probs = logits.softmax(dim=-1)
+            feats = feats / feats.norm(dim=-1, keepdim=True)
+            cos = (feats @ text_feat.T).squeeze(-1)
+            cos_list.append(cos.detach().cpu().numpy())
 
-            pred_prob = probs[:, pred_label]
-            pred_prob_list.append(pred_prob.detach().cpu().numpy())
-
-    return np.concatenate(pred_prob_list)
+    return np.concatenate(cos_list)
 
 
 def normalize_heatmap(hm):
@@ -162,9 +161,8 @@ def build_curves_for_variant(
     original_tensor = normalize_only(image).unsqueeze(0).to(device)
     original_pred_prob = metrics_for_batch(
         clip_model,
-        zero_shot_weights,
         original_tensor,
-        pred_label,
+        target_text_embedding,
         batch_size,
     )
 
@@ -172,38 +170,35 @@ def build_curves_for_variant(
     black_tensor = normalize_only(black_img).unsqueeze(0).to(device)
     black_pred_prob = metrics_for_batch(
         clip_model,
-        zero_shot_weights,
         black_tensor,
-        pred_label,
+        target_text_embedding,
         batch_size,
     )
 
-    del_batch, del_fraction = deletion_sequence(image, heatmap, normalize_only, device, l_steps, gap)
-    ins_batch, ins_fraction = insertion_sequence(image, heatmap, normalize_only, device, l_steps, gap)
+    del_batch, del_steps = deletion_sequence(image, heatmap, normalize_only, device, l_steps, gap)
+    ins_batch, ins_steps = insertion_sequence(image, heatmap, normalize_only, device, l_steps, gap)
 
     del_pred_prob = metrics_for_batch(
         clip_model,
-        zero_shot_weights,
         del_batch,
-        pred_label,
+        target_text_embedding,
         batch_size,
     )
     ins_pred_prob = metrics_for_batch(
         clip_model,
-        zero_shot_weights,
         ins_batch,
-        pred_label,
+        target_text_embedding,
         batch_size,
     )
 
-    x_del = np.concatenate(([0.0], del_fraction))
-    x_ins = np.concatenate(([0.0], ins_fraction))
+    x_del = np.concatenate(([0], del_steps))
+    x_ins = np.concatenate(([0], ins_steps))
 
     return {
         "x_del": x_del,
         "x_ins": x_ins,
-        "del_pred_prob": np.concatenate(([original_pred_prob[0]], del_pred_prob)),
-        "ins_pred_prob": np.concatenate(([black_pred_prob[0]], ins_pred_prob)),
+        "del_cos": np.concatenate(([original_pred_prob[0]], del_pred_prob)),
+        "ins_cos": np.concatenate(([black_pred_prob[0]], ins_pred_prob)),
     }
 
 
@@ -214,27 +209,27 @@ def step_mean(curve):
 
 
 def compute_scalar_scores(curves):
-    del_pred_prob = step_mean(curves["del_pred_prob"])
-    ins_pred_prob = step_mean(curves["ins_pred_prob"])
+    del_cos = step_mean(curves["del_cos"])
+    ins_cos = step_mean(curves["ins_cos"])
     return {
-        "deletion": {"pred_prob": del_pred_prob},
-        "insertion": {"pred_prob": ins_pred_prob},
-        "imd": {"pred_prob": ins_pred_prob - del_pred_prob},
+        "deletion": {"cosine": del_cos},
+        "insertion": {"cosine": ins_cos},
+        "imd": {"cosine": ins_cos - del_cos},
     }
 
 
 def init_metrics_bucket():
     return {
-        "deletion": {"pred_prob": 0.0},
-        "insertion": {"pred_prob": 0.0},
-        "imd": {"pred_prob": 0.0},
+        "deletion": {"cosine": 0.0},
+        "insertion": {"cosine": 0.0},
+        "imd": {"cosine": 0.0},
         "count": 0,
     }
 
 
 def add_metrics(bucket, scores):
     for metric_name in ["deletion", "insertion", "imd"]:
-        bucket[metric_name]["pred_prob"] += float(scores[metric_name]["pred_prob"])
+        bucket[metric_name]["cosine"] += float(scores[metric_name]["cosine"])
     bucket["count"] += 1
 
 
@@ -243,7 +238,7 @@ def finalize_metrics(bucket):
     out = {}
     for metric_name in ["deletion", "insertion", "imd"]:
         out[metric_name] = {
-            "pred_prob": bucket[metric_name]["pred_prob"] / c,
+            "cosine": bucket[metric_name]["cosine"] / c,
         }
     out["count"] = bucket["count"]
     return out
@@ -345,24 +340,22 @@ def get_precomputed_map_path(entry, method, split, attack_root):
 def plot_split_curves(method, split_name, split_mean, x_del, x_ins, out_path):
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.8), dpi=120)
 
-    axes[0].plot(x_del, split_mean["del_pred_prob"], marker="o", label="Deletion Pred Prob")
+    axes[0].plot(x_del, split_mean["del_cos"], marker="o", label="Deletion Cosine")
     axes[0].set_title("Deletion")
-    axes[0].set_xlabel("Removed Pixel Ratio")
-    axes[0].set_ylabel("Pred Prob")
-    axes[0].set_ylim(0.0, 1.0)
+    axes[0].set_xlabel("Step")
+    axes[0].set_ylabel("Cosine")
     axes[0].grid(True, alpha=0.3)
 
-    axes[1].plot(x_ins, split_mean["ins_pred_prob"], marker="o", label="Insertion Pred Prob")
+    axes[1].plot(x_ins, split_mean["ins_cos"], marker="o", label="Insertion Cosine")
     axes[1].set_title("Insertion")
-    axes[1].set_xlabel("Inserted Pixel Ratio")
-    axes[1].set_ylabel("Pred Prob")
-    axes[1].set_ylim(0.0, 1.0)
+    axes[1].set_xlabel("Step")
+    axes[1].set_ylabel("Cosine")
     axes[1].grid(True, alpha=0.3)
 
     for ax in axes:
         ax.legend(loc="best", frameon=False)
 
-    plt.suptitle(f"{method} | {split_name} | pred probability")
+    plt.suptitle(f"{method} | {split_name} | cosine")
     plt.tight_layout()
     plt.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
@@ -388,29 +381,35 @@ def plot_multi_method_comparison(results_by_method, split_name, out_path):
             "color": colors[method],
             "label": method,
         }
-        axes[0].plot(x_del, split["del_pred_prob"], **style)
-        axes[1].plot(x_ins, split["ins_pred_prob"], **style)
+        axes[0].plot(x_del, split["del_cos"], **style)
+        axes[1].plot(x_ins, split["ins_cos"], **style)
 
     axes[0].set_title(f"{split_name.capitalize()} - Deletion")
     axes[1].set_title(f"{split_name.capitalize()} - Insertion")
 
-    axes[0].set_xlabel("Removed Pixel Ratio")
-    axes[1].set_xlabel("Inserted Pixel Ratio")
+    axes[0].set_xlabel("Step")
+    axes[1].set_xlabel("Step")
 
     for ax in axes:
-        ax.set_ylabel("Pred Prob")
+        ax.set_ylabel("Cosine")
         ax.grid(True, alpha=0.25, linestyle="--")
-        ax.set_ylim(0.0, 1.0)
 
     handles, labels = axes[1].get_legend_handles_labels()
     fig.legend(handles, labels, loc="center left", bbox_to_anchor=(0.99, 0.5), frameon=False, title="Methods")
-    plt.suptitle(f"Method Comparison | {split_name.capitalize()} | Pred Prob", fontsize=14, fontweight="bold")
+    plt.suptitle(f"Method Comparison | {split_name.capitalize()} | Cosine", fontsize=14, fontweight="bold")
     plt.tight_layout(rect=[0.0, 0.0, 0.88, 0.96])
     plt.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
 
 
 def curve_auc(x, y):
+    x = np.asarray(x, dtype=np.float32)
+    y = np.asarray(y, dtype=np.float32)
+    if x.shape[0] == 0:
+        return 0.0
+    max_x = float(np.max(x))
+    if max_x > 0:
+        x = x / max_x
     return float(np.trapz(y, x))
 
 
@@ -424,22 +423,21 @@ def plot_sample_auc_panels(method, sample_folder, clean_curves, adv_curves, out_
     for split_name, curves in split_curves.items():
         fig, axes = plt.subplots(1, 2, figsize=(8, 4), dpi=120)
         panels = [
-            (axes[0], curves["x_del"], curves["del_pred_prob"], "Deletion"),
-            (axes[1], curves["x_ins"], curves["ins_pred_prob"], "Insertion"),
+            (axes[0], curves["x_del"], curves["del_cos"], "Deletion"),
+            (axes[1], curves["x_ins"], curves["ins_cos"], "Insertion"),
         ]
 
         for ax, x, pred_y, title in panels:
             ax.plot(x, pred_y, color="#1f77b4", linewidth=1.5)
             ax.fill_between(x, pred_y, color="#1f77b4", alpha=0.30)
             ax.set_title(title)
-            ax.set_xlim(0.0, 1.0)
-            ax.set_ylim(0.0, 1.0)
-            ax.set_xticks([])
-            ax.set_yticks([])
+            ax.set_xlim(0.0, max(1.0, float(np.max(x))))
+            ax.set_xlabel("Step")
+            ax.set_ylabel("Cosine")
             pred_auc = curve_auc(x, pred_y)
             ax.text(0.5, 0.5, f"AUC={pred_auc:.3f}", ha="center", va="center", fontsize=12, transform=ax.transAxes)
 
-        plt.suptitle(f"{method} | {split_name} | pred probability", fontsize=11)
+        plt.suptitle(f"{method} | {split_name} | cosine", fontsize=11)
         plt.tight_layout()
         split_out_name = f"{split_name}_{out_name}"
         out_path = os.path.join(sample_folder, split_out_name)
@@ -451,11 +449,11 @@ def plot_sample_auc_panels(method, sample_folder, clean_curves, adv_curves, out_
 
 
 def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weights, normalize_only, device):
-    clean_del_pred_prob_sum = None
-    clean_ins_pred_prob_sum = None
+    clean_del_cos_sum = None
+    clean_ins_cos_sum = None
 
-    adv_del_pred_prob_sum = None
-    adv_ins_pred_prob_sum = None
+    adv_del_cos_sum = None
+    adv_ins_cos_sum = None
 
     x_del = None
     x_ins = None
@@ -546,17 +544,17 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
             x_del = clean_curves["x_del"]
             x_ins = clean_curves["x_ins"]
 
-            clean_del_pred_prob_sum = np.zeros_like(clean_curves["del_pred_prob"], dtype=np.float64)
-            clean_ins_pred_prob_sum = np.zeros_like(clean_curves["ins_pred_prob"], dtype=np.float64)
+            clean_del_cos_sum = np.zeros_like(clean_curves["del_cos"], dtype=np.float64)
+            clean_ins_cos_sum = np.zeros_like(clean_curves["ins_cos"], dtype=np.float64)
 
-            adv_del_pred_prob_sum = np.zeros_like(adv_curves["del_pred_prob"], dtype=np.float64)
-            adv_ins_pred_prob_sum = np.zeros_like(adv_curves["ins_pred_prob"], dtype=np.float64)
+            adv_del_cos_sum = np.zeros_like(adv_curves["del_cos"], dtype=np.float64)
+            adv_ins_cos_sum = np.zeros_like(adv_curves["ins_cos"], dtype=np.float64)
 
-        clean_del_pred_prob_sum += clean_curves["del_pred_prob"]
-        clean_ins_pred_prob_sum += clean_curves["ins_pred_prob"]
+        clean_del_cos_sum += clean_curves["del_cos"]
+        clean_ins_cos_sum += clean_curves["ins_cos"]
 
-        adv_del_pred_prob_sum += adv_curves["del_pred_prob"]
-        adv_ins_pred_prob_sum += adv_curves["ins_pred_prob"]
+        adv_del_cos_sum += adv_curves["del_cos"]
+        adv_ins_cos_sum += adv_curves["ins_cos"]
 
         add_metrics(clean_table, compute_scalar_scores(clean_curves))
         add_metrics(adv_table, compute_scalar_scores(adv_curves))
@@ -566,12 +564,12 @@ def evaluate_method(method, args, entries, clip_model, explainer, zero_shot_weig
         raise RuntimeError(f"No samples were successfully evaluated for method: {method}")
 
     clean_mean = {
-        "del_pred_prob": clean_del_pred_prob_sum / count,
-        "ins_pred_prob": clean_ins_pred_prob_sum / count,
+        "del_cos": clean_del_cos_sum / count,
+        "ins_cos": clean_ins_cos_sum / count,
     }
     adv_mean = {
-        "del_pred_prob": adv_del_pred_prob_sum / count,
-        "ins_pred_prob": adv_ins_pred_prob_sum / count,
+        "del_cos": adv_del_cos_sum / count,
+        "ins_cos": adv_ins_cos_sum / count,
     }
 
     return {
@@ -590,7 +588,7 @@ def save_scalar_csv(path, rows):
     with open(path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["method", "split", "metric", "pred_prob", "num_samples_evaluated"],
+            fieldnames=["method", "split", "metric", "cosine", "num_samples_evaluated"],
         )
         writer.writeheader()
         writer.writerows(rows)
@@ -598,7 +596,7 @@ def save_scalar_csv(path, rows):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Deletion/insertion/IMD evaluation with predicted-class probability for PGD attack outputs"
+        description="Deletion/insertion/IMD evaluation with cosine similarity for PGD attack outputs"
     )
     parser.add_argument("--attack-root", required=True, help="Folder produced by pgd_attack.py")
     parser.add_argument(
@@ -671,7 +669,7 @@ def main():
     results_by_method = {}
     summary = {
         "attack_root": args.attack_root,
-        "target": "pred_prob",
+        "target": "cosine",
         "clip_model": args.clip_model,
         "methods": {},
     }
@@ -717,16 +715,16 @@ def main():
             "x_del": result["x_del"].tolist(),
             "x_ins": result["x_ins"].tolist(),
             "clean": {
-                "deletion_pred_prob": result["clean_mean"]["del_pred_prob"].tolist(),
-                "insertion_pred_prob": result["clean_mean"]["ins_pred_prob"].tolist(),
+                "deletion_cosine": result["clean_mean"]["del_cos"].tolist(),
+                "insertion_cosine": result["clean_mean"]["ins_cos"].tolist(),
             },
             "adv": {
-                "deletion_pred_prob": result["adv_mean"]["del_pred_prob"].tolist(),
-                "insertion_pred_prob": result["adv_mean"]["ins_pred_prob"].tolist(),
+                "deletion_cosine": result["adv_mean"]["del_cos"].tolist(),
+                "insertion_cosine": result["adv_mean"]["ins_cos"].tolist(),
             },
             "table_metrics": {
-                "columns": ["pred_prob"],
-                "target": "pred_prob",
+                "columns": ["cosine"],
+                "target": "cosine",
                 "clean": result["clean_metrics"],
                 "adv": result["adv_metrics"],
             },
@@ -744,19 +742,19 @@ def main():
                         "method": method,
                         "split": split_name,
                         "metric": metric_name,
-                        "pred_prob": vals["pred_prob"],
+                        "cosine": vals["cosine"],
                         "num_samples_evaluated": result["num_samples_evaluated"],
                     }
                 )
 
-    clean_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_clean_pred_prob.png")
-    adv_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_adv_pred_prob.png")
+    clean_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_clean_cosine.png")
+    adv_comp_path = os.path.join(args.attack_root, f"{args.output_prefix}_methods_adv_cosine.png")
     plot_multi_method_comparison(results_by_method, "clean", clean_comp_path)
     plot_multi_method_comparison(results_by_method, "adv", adv_comp_path)
 
     summary["comparison_figures"] = {
-        "clean_pred_prob": clean_comp_path,
-        "adv_pred_prob": adv_comp_path,
+        "clean_cosine": clean_comp_path,
+        "adv_cosine": adv_comp_path,
     }
 
     summary_path = os.path.join(args.attack_root, f"{args.output_prefix}_summary.json")
@@ -768,8 +766,8 @@ def main():
 
     print(f"Saved summary: {summary_path}")
     print(f"Saved scalar csv: {scalar_csv_path}")
-    print(f"Saved comparison (clean pred_prob): {clean_comp_path}")
-    print(f"Saved comparison (adv pred_prob): {adv_comp_path}")
+    print(f"Saved comparison (clean cosine): {clean_comp_path}")
+    print(f"Saved comparison (adv cosine): {adv_comp_path}")
 
 
 if __name__ == "__main__":
