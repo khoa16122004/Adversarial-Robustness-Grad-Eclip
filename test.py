@@ -557,11 +557,12 @@ def evaluate_method(method, args, entries, folder_to_label, clip_model, explaine
     adv_table = init_metrics_bucket()
 
     for entry in tqdm(entries, desc=f"Evaluating ({method})"):
-        raise
         gt_label = entry.get("gt_label")
         if gt_label is None:
             gt_label = infer_gt_label(entry, args.attack_root, folder_to_label)
         if gt_label is None:
+            print("khoa")
+            raise
             continue
 
         try:
