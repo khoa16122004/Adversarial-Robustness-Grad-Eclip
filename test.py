@@ -482,7 +482,6 @@ def curve_auc(x, y):
 
 
 def plot_sample_auc_panels(method, sample_folder, clean_curves, adv_curves, out_name):
-    raise
     fig, axes = plt.subplots(2, 2, figsize=(8, 8), dpi=120)
     panels = [
         (
@@ -640,8 +639,6 @@ def evaluate_method(method, args, entries, folder_to_label, clip_model, explaine
                 )
                 print(f"Saved sample AUC ({method}): {saved_path}")
             except Exception:
-                print("Dog")
-                raise
                 pass
 
         if x_del is None:
