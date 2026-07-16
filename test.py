@@ -383,6 +383,38 @@ def plot_split_curves(method, split_name, split_mean, x_del, x_ins, score_key, o
     plt.close(fig)
 
 
+def plot_clean_adv_overlay_curves(method, clean_mean, adv_mean, x_del, x_ins, score_key, out_path):
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.8), dpi=120)
+    y_label = "Prob" if score_key == "prob" else "Cosine"
+
+    clean_color = "#1f77b4"  # blue
+    adv_color = "#ff7f0e"  # orange
+
+    axes[0].plot(x_del, clean_mean[f"del_{score_key}"], marker="o", color=clean_color, label="Clean")
+    axes[0].plot(x_del, adv_mean[f"del_{score_key}"], marker="o", color=adv_color, label="Adv")
+    axes[0].set_title("Deletion")
+    axes[0].set_xlabel("Step")
+    axes[0].set_ylabel(y_label)
+    axes[0].grid(True, alpha=0.3)
+
+    axes[1].plot(x_ins, clean_mean[f"ins_{score_key}"], marker="o", color=clean_color, label="Clean")
+    axes[1].plot(x_ins, adv_mean[f"ins_{score_key}"], marker="o", color=adv_color, label="Adv")
+    axes[1].set_title("Insertion")
+    axes[1].set_xlabel("Step")
+    axes[1].set_ylabel(y_label)
+    axes[1].grid(True, alpha=0.3)
+
+    for ax in axes:
+        if score_key == "prob":
+            ax.set_ylim(0.0, 1.0)
+        ax.legend(loc="best", frameon=False)
+
+    plt.suptitle(f"{method} | clean vs adv | {score_key}")
+    plt.tight_layout()
+    plt.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+
+
 def plot_multi_method_comparison(results_by_method, split_name, score_key, out_path):
     methods = list(results_by_method.keys())
     cmap = plt.get_cmap("tab10")
@@ -743,6 +775,7 @@ def main():
 
         clean_fig_path = None
         adv_fig_path = None
+        overlay_fig_path = None
         if args.save_per_method_plots:
             clean_fig_path = {
                 "prob": os.path.join(args.attack_root, f"{args.output_prefix}_{method}_clean_prob_curves.png"),
@@ -751,6 +784,10 @@ def main():
             adv_fig_path = {
                 "prob": os.path.join(args.attack_root, f"{args.output_prefix}_{method}_adv_prob_curves.png"),
                 "cosine": os.path.join(args.attack_root, f"{args.output_prefix}_{method}_adv_cosine_curves.png"),
+            }
+            overlay_fig_path = {
+                "prob": os.path.join(args.attack_root, f"{args.output_prefix}_{method}_clean_vs_adv_prob_curves.png"),
+                "cosine": os.path.join(args.attack_root, f"{args.output_prefix}_{method}_clean_vs_adv_cosine_curves.png"),
             }
             plot_split_curves(
                 method=method,
@@ -788,6 +825,24 @@ def main():
                 score_key="cos",
                 out_path=adv_fig_path["cosine"],
             )
+            plot_clean_adv_overlay_curves(
+                method=method,
+                clean_mean=result["clean_mean"],
+                adv_mean=result["adv_mean"],
+                x_del=result["x_del"],
+                x_ins=result["x_ins"],
+                score_key="prob",
+                out_path=overlay_fig_path["prob"],
+            )
+            plot_clean_adv_overlay_curves(
+                method=method,
+                clean_mean=result["clean_mean"],
+                adv_mean=result["adv_mean"],
+                x_del=result["x_del"],
+                x_ins=result["x_ins"],
+                score_key="cos",
+                out_path=overlay_fig_path["cosine"],
+            )
 
         summary["methods"][method] = {
             "num_samples_evaluated": result["num_samples_evaluated"],
@@ -811,7 +866,7 @@ def main():
                 "clean": result["clean_metrics"],
                 "adv": result["adv_metrics"],
             },
-            "figure_paths": {"clean": clean_fig_path, "adv": adv_fig_path},
+            "figure_paths": {"clean": clean_fig_path, "adv": adv_fig_path, "clean_vs_adv": overlay_fig_path},
         }
 
         for split_name, split_metrics in [
