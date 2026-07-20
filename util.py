@@ -53,7 +53,15 @@ def predict_zero_shot_clip(classifier, image_tensor, device):
     return logits, probs, pred_label, pred_confidence
 
 
-def build_blur_substrate(gkern_fn, kernel_size=11, kernel_sigma=5):
+def build_blur_substrate(gkern_or_kernel_size=11, kernel_size=11, kernel_sigma=5):
+    if callable(gkern_or_kernel_size):
+        gkern_fn = gkern_or_kernel_size
+    else:
+        from RISE.evaluation import gkern as gkern_fn
+
+        kernel_sigma = kernel_size
+        kernel_size = gkern_or_kernel_size
+
     kernel = gkern_fn(kernel_size, kernel_sigma)
 
     def blur_fn(x):
