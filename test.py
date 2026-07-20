@@ -47,6 +47,13 @@ def parse_args():
     parser.add_argument("--output-txt", default="test_eval_result.txt", help="Where to save a short text summary")
     parser.add_argument("--output-dir", default="test_eval_outputs", help="Where to save generated images")
     parser.add_argument("--save-process", action="store_true", help="Save every deletion/insertion step image")
+    parser.add_argument(
+        "--verbose",
+        type=int,
+        default=0,
+        choices=[0, 1, 2],
+        help="CausalMetric verbosity: 0 no plot, 1 final step only, 2 show every step",
+    )
     return parser.parse_args()
 
 
@@ -148,13 +155,13 @@ def main():
     deletion_curve = deletion.single_run(
         image_tensor,
         saliency,
-        verbose=0,
+        verbose=args.verbose,
         save_to=deletion_process_dir if args.save_process else None,
     )
     insertion_curve = insertion.single_run(
         image_tensor,
         saliency,
-        verbose=0,
+        verbose=args.verbose,
         save_to=insertion_process_dir if args.save_process else None,
     )
 
