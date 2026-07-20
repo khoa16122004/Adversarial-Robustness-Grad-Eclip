@@ -8,10 +8,15 @@ import torch.nn.functional as F
 from PIL import Image
 from torchvision.transforms import Resize
 
-from clip_utils import build_zero_shot_classifier
-from imagenet_metadata import IMAGENET_CLASSNAMES, OPENAI_IMAGENET_TEMPLATES
-from util import ZeroShotClipClassifier, build_blur_substrate, generate_hm, predict_zero_shot_clip
-from RISE.evaluation import CausalMetric, auc, gkern
+from imagenet_metadata import IMAGENET_CLASSNAMES
+from util import (
+    build_blur_substrate,
+    build_zero_shot_clip_classifier,
+    generate_hm,
+    predict_zero_shot_clip,
+    save_causal_metric_summary,
+)
+from RISE.evaluation import CausalMetric, auc
 
 
 def parse_args():
@@ -39,6 +44,8 @@ def parse_args():
     parser.add_argument("--device", default=None, help="cuda or cpu")
     parser.add_argument("--output-json", default="test_eval_result.json", help="Where to save numeric results as JSON")
     parser.add_argument("--output-txt", default="test_eval_result.txt", help="Where to save a short text summary")
+    parser.add_argument("--output-dir", default="test_eval_outputs", help="Where to save generated images")
+    parser.add_argument("--save-process", action="store_true", help="Save every deletion/insertion step image")
     return parser.parse_args()
 
 
@@ -91,16 +98,12 @@ def main():
     clip_model, preprocess = clip.load(args.clip_model, device=device)
     clip_model.eval()
 
-    zero_shot_weights = build_zero_shot_classifier(
+    classifier, _ = build_zero_shot_clip_classifier(
         clip_model,
-        classnames=IMAGENET_CLASSNAMES,
-        templates=OPENAI_IMAGENET_TEMPLATES,
-        num_classes_per_batch=10,
         device=device,
+        num_classes_per_batch=10,
         use_tqdm=True,
     )
-    classifier = ZeroShotClipClassifier(clip_model=clip_model, zero_shot_weights=zero_shot_weights)
-    classifier.eval()
 
     image = Image.open(args.image_path).convert("RGB")
     input_resolution = clip_model.visual.input_resolution
@@ -133,8 +136,46 @@ def main():
     insertion = CausalMetric(classifier, "ins", args.step, substrate_fn=blur_fn)
     deletion = CausalMetric(classifier, "del", args.step, substrate_fn=lambda x: torch.zeros_like(x))
 
-    deletion_curve = deletion.single_run(image_tensor, saliency, verbose=0)
-    insertion_curve = insertion.single_run(image_tensor, saliency, verbose=0)
+    os.makedirs(args.output_dir, exist_ok=True)
+    deletion_process_dir = os.path.join(args.output_dir, "deletion_steps")
+    insertion_process_dir = os.path.join(args.output_dir, "insertion_steps")
+    if args.save_process:
+        os.makedirs(deletion_process_dir, exist_ok=True)
+        os.makedirs(insertion_process_dir, exist_ok=True)
+
+    deletion_curve = deletion.single_run(
+        image_tensor,
+        saliency,
+        verbose=0,
+        save_to=deletion_process_dir if args.save_process else None,
+    )
+    insertion_curve = insertion.single_run(
+        image_tensor,
+        saliency,
+        verbose=0,
+        save_to=insertion_process_dir if args.save_process else None,
+    )
+
+    deletion_summary_path = os.path.join(args.output_dir, "deletion_summary.png")
+    insertion_summary_path = os.path.join(args.output_dir, "insertion_summary.png")
+    save_causal_metric_summary(
+        image_tensor=image_tensor,
+        final_tensor=torch.zeros_like(image_tensor),
+        scores=deletion_curve,
+        output_path=deletion_summary_path,
+        mode="del",
+        class_name=IMAGENET_CLASSNAMES[pred_label],
+        preprocess=preprocess,
+    )
+    save_causal_metric_summary(
+        image_tensor=image_tensor,
+        final_tensor=image_tensor,
+        scores=insertion_curve,
+        output_path=insertion_summary_path,
+        mode="ins",
+        class_name=IMAGENET_CLASSNAMES[pred_label],
+        preprocess=preprocess,
+    )
 
     gt_classname = IMAGENET_CLASSNAMES[args.gt_label] if args.gt_label is not None else None
     payload = {
@@ -153,6 +194,11 @@ def main():
         "step": args.step,
         "kernel_size": args.kernel_size,
         "kernel_sigma": args.kernel_sigma,
+        "output_dir": os.path.abspath(args.output_dir),
+        "deletion_summary_image": os.path.abspath(deletion_summary_path),
+        "insertion_summary_image": os.path.abspath(insertion_summary_path),
+        "deletion_process_dir": os.path.abspath(deletion_process_dir) if args.save_process else None,
+        "insertion_process_dir": os.path.abspath(insertion_process_dir) if args.save_process else None,
         "deletion_auc": float(auc(deletion_curve)),
         "insertion_auc": float(auc(insertion_curve)),
         "deletion_curve": deletion_curve.tolist(),
@@ -170,6 +216,8 @@ def main():
                 "target_classname": payload["target_classname"],
                 "deletion_auc": payload["deletion_auc"],
                 "insertion_auc": payload["insertion_auc"],
+                "deletion_summary_image": payload["deletion_summary_image"],
+                "insertion_summary_image": payload["insertion_summary_image"],
                 "output_json": os.path.abspath(args.output_json),
                 "output_txt": os.path.abspath(args.output_txt),
             },

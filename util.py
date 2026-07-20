@@ -6,6 +6,7 @@ import torch.nn as nn
 import Game_MM_CLIP.clip as mm_clip
 import cv2
 import numpy as np
+from matplotlib import pyplot as plt
 from PIL import Image
 
 import torch.nn.functional as F
@@ -93,6 +94,61 @@ def visualize(hmap, raw_image, resize):
     color = cv2.cvtColor(color, cv2.COLOR_BGR2RGB)
     c_ret = np.clip(image * (1 - 0.5) + color * 0.5, 0, 255).astype(np.uint8)
     return c_ret
+
+
+def get_preprocess_normalization_stats(preprocess):
+    transforms = getattr(preprocess, "transforms", [])
+    for transform in transforms:
+        if hasattr(transform, "mean") and hasattr(transform, "std"):
+            mean = np.asarray(transform.mean, dtype=np.float32)
+            std = np.asarray(transform.std, dtype=np.float32)
+            return mean, std
+    raise ValueError("Could not infer normalization mean/std from preprocess")
+
+
+def denormalize_image_tensor(image_tensor, preprocess):
+    mean, std = get_preprocess_normalization_stats(preprocess)
+    if image_tensor.ndim == 4:
+        image_tensor = image_tensor[0]
+    image = image_tensor.detach().cpu().numpy().transpose((1, 2, 0))
+    image = std * image + mean
+    return np.clip(image, 0, 1)
+
+
+def save_causal_metric_summary(image_tensor, final_tensor, scores, output_path, mode, class_name, preprocess):
+    if mode == "del":
+        title = "Deletion game"
+        ylabel = "Pixels deleted"
+    elif mode == "ins":
+        title = "Insertion game"
+        ylabel = "Pixels inserted"
+    else:
+        raise ValueError(f"Unknown mode: {mode}")
+
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+    n_steps = len(scores) - 1
+    preview_image = denormalize_image_tensor(final_tensor, preprocess)
+
+    plt.figure(figsize=(10, 5))
+    plt.subplot(121)
+    plt.title(f"{ylabel} 100.0%, P={scores[-1]:.4f}")
+    plt.axis("off")
+    plt.imshow(preview_image)
+
+    plt.subplot(122)
+    plt.plot(np.arange(n_steps + 1) / n_steps, scores)
+    plt.xlim(-0.1, 1.1)
+    plt.ylim(0, 1.05)
+    plt.fill_between(np.arange(n_steps + 1) / n_steps, 0, scores, alpha=0.4)
+    plt.title(title)
+    plt.xlabel(ylabel)
+    plt.ylabel(class_name)
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.close()
 
 def load_imagenet_label_map(index_json):
     with open(index_json, "r", encoding="utf-8") as f:
