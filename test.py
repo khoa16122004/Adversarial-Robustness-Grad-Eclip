@@ -16,6 +16,7 @@ from util import (
     generate_hm,
     predict_zero_shot_clip,
     save_causal_metric_summary,
+    save_saliency_outputs,
 )
 from RISE.evaluation import CausalMetric, auc
 
@@ -141,11 +142,18 @@ def main():
     )
     saliency = heatmap.detach().cpu().numpy()
 
+    os.makedirs(args.output_dir, exist_ok=True)
+    saliency_raw_path, saliency_heatmap_path, saliency_overlay_path = save_saliency_outputs(
+        heatmap,
+        resized_image,
+        args.output_dir,
+        stem=f"{args.hm_type}_saliency",
+    )
+
     blur_fn = build_blur_substrate(args.kernel_size, args.kernel_sigma)
     insertion = CausalMetric(metric_model, "ins", args.step, substrate_fn=blur_fn)
     deletion = CausalMetric(metric_model, "del", args.step, substrate_fn=lambda x: torch.zeros_like(x))
 
-    os.makedirs(args.output_dir, exist_ok=True)
     deletion_process_dir = os.path.join(args.output_dir, "deletion_steps")
     insertion_process_dir = os.path.join(args.output_dir, "insertion_steps")
     if args.save_process:
@@ -204,6 +212,9 @@ def main():
         "kernel_size": args.kernel_size,
         "kernel_sigma": args.kernel_sigma,
         "output_dir": os.path.abspath(args.output_dir),
+        "saliency_map_npy": os.path.abspath(saliency_raw_path),
+        "saliency_map_image": os.path.abspath(saliency_heatmap_path),
+        "saliency_overlay_image": os.path.abspath(saliency_overlay_path),
         "deletion_summary_image": os.path.abspath(deletion_summary_path),
         "insertion_summary_image": os.path.abspath(insertion_summary_path),
         "deletion_process_dir": os.path.abspath(deletion_process_dir) if args.save_process else None,
@@ -225,6 +236,8 @@ def main():
                 "target_classname": payload["target_classname"],
                 "deletion_auc": payload["deletion_auc"],
                 "insertion_auc": payload["insertion_auc"],
+                "saliency_map_image": payload["saliency_map_image"],
+                "saliency_overlay_image": payload["saliency_overlay_image"],
                 "deletion_summary_image": payload["deletion_summary_image"],
                 "insertion_summary_image": payload["insertion_summary_image"],
                 "output_json": os.path.abspath(args.output_json),

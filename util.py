@@ -112,6 +112,37 @@ def visualize(hmap, raw_image, resize):
     return c_ret
 
 
+def save_saliency_outputs(hmap, raw_image, output_dir, stem="saliency_map"):
+    os.makedirs(output_dir, exist_ok=True)
+
+    if isinstance(hmap, torch.Tensor):
+        saliency = hmap.detach().cpu().numpy()
+    else:
+        saliency = np.asarray(hmap)
+
+    saliency = saliency.astype(np.float32)
+    saliency -= saliency.min()
+    if saliency.max() > 0:
+        saliency /= saliency.max()
+
+    raw_path = os.path.join(output_dir, f"{stem}.npy")
+    heatmap_path = os.path.join(output_dir, f"{stem}.png")
+    overlay_path = os.path.join(output_dir, f"{stem}_overlay.png")
+
+    np.save(raw_path, saliency)
+
+    heatmap_uint8 = (saliency * 255).astype(np.uint8)
+    color = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
+    cv2.imwrite(heatmap_path, color)
+
+    image = np.asarray(raw_image.copy())
+    overlay = cv2.cvtColor(color, cv2.COLOR_BGR2RGB)
+    overlay = np.clip(image * 0.5 + overlay * 0.5, 0, 255).astype(np.uint8)
+    cv2.imwrite(overlay_path, overlay[:, :, ::-1])
+
+    return raw_path, heatmap_path, overlay_path
+
+
 def get_preprocess_normalization_stats(preprocess):
     transforms = getattr(preprocess, "transforms", [])
     for transform in transforms:
