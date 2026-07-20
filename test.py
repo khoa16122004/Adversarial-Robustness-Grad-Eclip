@@ -11,6 +11,7 @@ from torchvision.transforms import Resize
 from imagenet_metadata import IMAGENET_CLASSNAMES
 from util import (
     build_blur_substrate,
+    build_causal_metric_model,
     build_zero_shot_clip_classifier,
     generate_hm,
     predict_zero_shot_clip,
@@ -104,6 +105,7 @@ def main():
         num_classes_per_batch=10,
         use_tqdm=True,
     )
+    metric_model = build_causal_metric_model(classifier)
 
     image = Image.open(args.image_path).convert("RGB")
     input_resolution = clip_model.visual.input_resolution
@@ -133,8 +135,8 @@ def main():
     saliency = heatmap.detach().cpu().numpy()
 
     blur_fn = build_blur_substrate(args.kernel_size, args.kernel_sigma)
-    insertion = CausalMetric(classifier, "ins", args.step, substrate_fn=blur_fn)
-    deletion = CausalMetric(classifier, "del", args.step, substrate_fn=lambda x: torch.zeros_like(x))
+    insertion = CausalMetric(metric_model, "ins", args.step, substrate_fn=blur_fn)
+    deletion = CausalMetric(metric_model, "del", args.step, substrate_fn=lambda x: torch.zeros_like(x))
 
     os.makedirs(args.output_dir, exist_ok=True)
     deletion_process_dir = os.path.join(args.output_dir, "deletion_steps")

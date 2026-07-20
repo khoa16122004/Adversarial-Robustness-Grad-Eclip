@@ -31,6 +31,16 @@ class ZeroShotClipClassifier(nn.Module):
         return self.logit_scale * image_features @ self.zero_shot_weights
 
 
+class SoftmaxModel(nn.Module):
+    def __init__(self, model, dim=1):
+        super().__init__()
+        self.model = model
+        self.softmax = nn.Softmax(dim=dim)
+
+    def forward(self, inputs):
+        return self.softmax(self.model(inputs))
+
+
 def build_zero_shot_clip_classifier(clip_model, device, num_classes_per_batch=10, use_tqdm=True):
     zero_shot_weights = build_zero_shot_classifier(
         clip_model,
@@ -52,6 +62,12 @@ def predict_zero_shot_clip(classifier, image_tensor, device):
         pred_label = int(torch.argmax(probs, dim=-1).item())
         pred_confidence = float(probs[0, pred_label].item())
     return logits, probs, pred_label, pred_confidence
+
+
+def build_causal_metric_model(classifier):
+    metric_model = SoftmaxModel(classifier, dim=1)
+    metric_model.eval()
+    return metric_model
 
 
 def build_blur_substrate(gkern_or_kernel_size=11, kernel_size=11, kernel_sigma=5):
