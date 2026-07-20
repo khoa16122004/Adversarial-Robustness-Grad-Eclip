@@ -103,9 +103,10 @@ def main():
     classifier.eval()
 
     image = Image.open(args.image_path).convert("RGB")
-    width, height = image.size
-    resize = Resize((height, width))
-    image_tensor = preprocess(image).unsqueeze(0)
+    input_resolution = clip_model.visual.input_resolution
+    resized_image = image.resize((input_resolution, input_resolution), Image.BICUBIC)
+    image_tensor = preprocess(resized_image).unsqueeze(0)
+    metric_resize = Resize(tuple(image_tensor.shape[-2:]))
 
     _, _, pred_label, pred_confidence = predict_zero_shot_clip(classifier, image_tensor, device)
 
@@ -117,7 +118,15 @@ def main():
         text_embedding = clip_model.encode_text(text_tokens)
         text_embedding = F.normalize(text_embedding, dim=-1)
 
-    heatmap = generate_hm(clip_model, args.hm_type, image, text_embedding, target_texts, resize, preprocess)
+    heatmap = generate_hm(
+        clip_model,
+        args.hm_type,
+        resized_image,
+        text_embedding,
+        target_texts,
+        metric_resize,
+        preprocess,
+    )
     saliency = heatmap.detach().cpu().numpy()
 
     blur_fn = build_blur_substrate(args.kernel_size, args.kernel_sigma)
