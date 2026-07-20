@@ -2,16 +2,65 @@ import time
 import json
 import os
 import torch
+import torch.nn as nn
 import Game_MM_CLIP.clip as mm_clip
 import cv2
 import numpy as np
 from PIL import Image
 
 import torch.nn.functional as F
+from clip_utils import build_zero_shot_classifier
 from generate_emap import CLIPExplainRunner
+from imagenet_metadata import IMAGENET_CLASSNAMES, OPENAI_IMAGENET_TEMPLATES
 
 
 _EXPLAINER_CACHE = {}
+
+
+class ZeroShotClipClassifier(nn.Module):
+    def __init__(self, clip_model, zero_shot_weights, logit_scale=100.0):
+        super().__init__()
+        self.clip_model = clip_model
+        self.zero_shot_weights = zero_shot_weights
+        self.logit_scale = logit_scale
+
+    def forward(self, images):
+        image_features = self.clip_model.encode_image(images)
+        image_features = F.normalize(image_features, dim=-1)
+        return self.logit_scale * image_features @ self.zero_shot_weights
+
+
+def build_zero_shot_clip_classifier(clip_model, device, num_classes_per_batch=10, use_tqdm=True):
+    zero_shot_weights = build_zero_shot_classifier(
+        clip_model,
+        classnames=IMAGENET_CLASSNAMES,
+        templates=OPENAI_IMAGENET_TEMPLATES,
+        num_classes_per_batch=num_classes_per_batch,
+        device=device,
+        use_tqdm=use_tqdm,
+    )
+    classifier = ZeroShotClipClassifier(clip_model=clip_model, zero_shot_weights=zero_shot_weights)
+    classifier.eval()
+    return classifier, zero_shot_weights
+
+
+def predict_zero_shot_clip(classifier, image_tensor, device):
+    with torch.no_grad():
+        logits = classifier(image_tensor.to(device))
+        probs = logits.softmax(dim=-1)
+        pred_label = int(torch.argmax(probs, dim=-1).item())
+        pred_confidence = float(probs[0, pred_label].item())
+    return logits, probs, pred_label, pred_confidence
+
+
+def build_blur_substrate(gkern_fn, kernel_size=11, kernel_sigma=5):
+    kernel = gkern_fn(kernel_size, kernel_sigma)
+
+    def blur_fn(x):
+        kernel_on_device = kernel.to(device=x.device, dtype=x.dtype)
+        return nn.functional.conv2d(x, kernel_on_device, padding=kernel_size // 2)
+
+    return blur_fn
 
 
 def _get_explainer(clipmodel, preprocess):
@@ -91,5 +140,9 @@ def collect_image_items(data_path, folder_to_label, max_images=None):
 def batched(sequence, batch_size):
     for start in range(0, len(sequence), batch_size):
         yield sequence[start : start + batch_size]
+        
+        
+        
+
  
 
