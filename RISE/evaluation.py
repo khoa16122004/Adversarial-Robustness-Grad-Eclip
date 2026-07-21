@@ -299,7 +299,10 @@ class AdversarialCausalMetric(CausalMetric):
             loss.backward()
 
             with torch.no_grad():
-                delta += alpha * delta.grad.sign()
+                if self.mode == 'del':
+                    delta += alpha * delta.grad.sign()
+                else:
+                    delta -= alpha * delta.grad.sign()
                 delta.clamp_(-eps, eps)
             delta = delta.detach().requires_grad_(True)
 
