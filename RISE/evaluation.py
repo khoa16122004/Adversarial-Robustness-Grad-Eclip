@@ -249,8 +249,8 @@ class AdversarialCausalMetric(CausalMetric):
                 finish = self.substrate_fn(x_raw_adv)
             elif self.mode == 'ins':
                 xt = self.substrate_fn(x_raw_adv)
-                print(xt)
                 finish = x_raw_adv
+                raise
             else:
                 raise ValueError("mode must be 'del' or 'ins'")
             finish_flat = finish.view(1, 3, HW)
