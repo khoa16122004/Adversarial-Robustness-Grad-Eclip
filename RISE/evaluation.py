@@ -230,7 +230,6 @@ class AdversarialCausalMetric(CausalMetric):
         for k in range(pgd_steps):
             x_raw_adv = torch.clamp(x_raw + delta, clip_min, clip_max)
             x_adv_normalzie = normalize_ImageNet1k(x_raw_adv)
-            print(x_raw_adv)
             # Ranking is treated as fixed in each PGD iteration.
             saliency = explanation_fn(
                 self.raw_model, # clip_model (not including the softmax)
