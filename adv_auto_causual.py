@@ -214,8 +214,10 @@ def main():
         metric_resize,
         preprocess,
     )
+    saliency = heatmap.detach().cpu().numpy()
+
     save_saliency_outputs(
-        heatmap,
+        saliency,
         resized_image,
         args.output_dir,
         stem=f"{args.mode}_adv_{args.hm_type}_saliency",
