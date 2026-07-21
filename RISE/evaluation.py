@@ -221,6 +221,8 @@ class AdversarialCausalMetric(CausalMetric):
                 target_class = int(torch.argmax(clean_logits, dim=1).item())
 
         delta = torch.zeros_like(x, requires_grad=True)
+        # deletion_steps = int(max(1, deletion_steps))
+        deletion_steps = (x.shape[0] + self.step - 1) // self.step
         deletion_steps = int(max(1, deletion_steps))
         details = {
             'loss': [],
