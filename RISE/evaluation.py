@@ -178,7 +178,7 @@ class AdversarialCausalMetric(CausalMetric):
                    target_class=None,
                    eps=8.0 / 255.0,
                    alpha=1.0 / 255.0,
-                   pgd_steps=10,
+                   pgd_steps=50,
                    deletion_steps=50,
                    margin=0.0,
                    lambda_del=1.0,
