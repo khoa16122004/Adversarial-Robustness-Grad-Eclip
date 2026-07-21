@@ -250,6 +250,8 @@ class AdversarialCausalMetric(CausalMetric):
             elif self.mode == 'ins':
                 xt = self.substrate_fn(x_raw_adv)
                 finish = x_raw_adv
+                print(xt)
+                print(finish)
                 raise
             else:
                 raise ValueError("mode must be 'del' or 'ins'")
@@ -257,7 +259,6 @@ class AdversarialCausalMetric(CausalMetric):
             l_del = torch.zeros(1, device=device)
 
             for t in range(deletion_steps):
-                print(xt.shape)
                 logits_t = self.model(xt)
                 p_t = logits_t[:, target_class]
                 l_del = l_del + p_t # aggregation
