@@ -256,6 +256,7 @@ class AdversarialCausalMetric(CausalMetric):
             l_del = torch.zeros(1, device=device)
 
             for t in range(deletion_steps):
+                print(xt.shape)
                 logits_t = self.model(xt)
                 p_t = logits_t[:, target_class]
                 l_del = l_del + p_t # aggregation
