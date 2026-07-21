@@ -160,6 +160,7 @@ def main():
         text_embedding,
         target_texts,
         metric_resize,
+        preprocess
     )
 
     deletion_process_dir = os.path.join(args.output_dir, "deletion_steps")
