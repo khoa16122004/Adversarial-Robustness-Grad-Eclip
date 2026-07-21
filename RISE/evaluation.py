@@ -183,7 +183,7 @@ class AdversarialCausalMetric(CausalMetric):
                    lambda_del=1.0,
                    clip_min=-3.0,
                    clip_max=3.0,
-                   return_details=False,
+                   return_details=True,
                    verbose=0):
         r"""PGD attack on a single image with classification + deletion loss.
 
