@@ -100,6 +100,16 @@ def save_outputs(output_json, output_txt, payload):
         f.write("\n".join(lines) + "\n")
 
 
+def save_clip_image(x, path):
+    mean = torch.tensor([0.48145466, 0.4578275, 0.40821073],
+                        device=x.device).view(1,3,1,1)
+    std = torch.tensor([0.26862954, 0.26130258, 0.27577711],
+                       device=x.device).view(1,3,1,1)
+
+    img = (x * std + mean).clamp(0,1)
+    save_image(img, path)
+
+
 def main():
     args = parse_args()
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -172,7 +182,8 @@ def main():
         image_tensor,
         generate_hm, # explain function
     )
-    save_image(x_adv, os.path.join(args.output_dir, "adversarial_image.png"))
+    x_adv = x_adv.detach().cpu()
+    save_clip_image(x_adv, os.path.join(args.output_dir, "adversarial_image.png"))
     
     
     # rerun
