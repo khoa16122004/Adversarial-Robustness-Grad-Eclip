@@ -18,7 +18,7 @@ from util import (
     save_causal_metric_summary,
     save_saliency_outputs,
 )
-from RISE.evaluation import CausalMetric, auc
+from RISE.evaluation import AdversarialCausalMetric, auc
 
 
 def parse_args():
@@ -134,7 +134,8 @@ def main():
     heatmap = generate_hm(
         clip_model,
         args.hm_type,
-        resized_image,
+        # resized_image,
+        image_tensor, # replace resized_image
         text_embedding,
         target_texts,
         metric_resize,
@@ -150,14 +151,22 @@ def main():
         stem=f"{args.hm_type}_saliency",
     )
 
-    adv_deletion = AdversarialCausalMetric(metric_model, "del", args.step, substrate_fn=lambda x: torch.zeros_like(x))
-    deletion = CausalMetric(metric_model, "del", args.step, substrate_fn=lambda x: torch.zeros_like(x))
+    adv_deletion = AdversarialCausalMetric(
+        metric_model,
+        'del',
+        args.step,
+        lambda x: torch.zeros_like(x),
+        args.hm_type,
+        text_embedding,
+        target_texts,
+        metric_resize,
+    )
 
     deletion_process_dir = os.path.join(args.output_dir, "deletion_steps")
     if args.save_process:
         os.makedirs(deletion_process_dir, exist_ok=True)
 
-    deletion_curve = deletion.single_run(
+    deletion_curve = adv_deletion.single_run(
         image_tensor,
         generate_hm, # explain function
     )
@@ -174,15 +183,7 @@ def main():
         class_name=IMAGENET_CLASSNAMES[pred_label],
         preprocess=preprocess,
     )
-    save_causal_metric_summary(
-        image_tensor=image_tensor,
-        final_tensor=image_tensor,
-        scores=insertion_curve,
-        output_path=insertion_summary_path,
-        mode="ins",
-        class_name=IMAGENET_CLASSNAMES[pred_label],
-        preprocess=preprocess,
-    )
+
 
     gt_classname = IMAGENET_CLASSNAMES[args.gt_label] if args.gt_label is not None else None
     payload = {
@@ -206,13 +207,9 @@ def main():
         "saliency_map_image": os.path.abspath(saliency_heatmap_path),
         "saliency_overlay_image": os.path.abspath(saliency_overlay_path),
         "deletion_summary_image": os.path.abspath(deletion_summary_path),
-        "insertion_summary_image": os.path.abspath(insertion_summary_path),
         "deletion_process_dir": os.path.abspath(deletion_process_dir) if args.save_process else None,
-        "insertion_process_dir": os.path.abspath(insertion_process_dir) if args.save_process else None,
         "deletion_auc": float(auc(deletion_curve)),
-        "insertion_auc": float(auc(insertion_curve)),
         "deletion_curve": deletion_curve.tolist(),
-        "insertion_curve": insertion_curve.tolist(),
     }
 
     save_outputs(args.output_json, args.output_txt, payload)
@@ -225,11 +222,9 @@ def main():
                 "target_label": payload["target_label"],
                 "target_classname": payload["target_classname"],
                 "deletion_auc": payload["deletion_auc"],
-                "insertion_auc": payload["insertion_auc"],
                 "saliency_map_image": payload["saliency_map_image"],
                 "saliency_overlay_image": payload["saliency_overlay_image"],
                 "deletion_summary_image": payload["deletion_summary_image"],
-                "insertion_summary_image": payload["insertion_summary_image"],
                 "output_json": os.path.abspath(args.output_json),
                 "output_txt": os.path.abspath(args.output_txt),
             },

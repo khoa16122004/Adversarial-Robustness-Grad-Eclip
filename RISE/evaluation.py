@@ -162,8 +162,12 @@ class CausalMetric():
     
     
 class AdversarialCausalMetric(CausalMetric):
-    def __init__(self, model, mode, step, substrate_fn):
+    def __init__(self, model, mode, step, substrate_fn, hm_type, txt_embedding, txts, resize):
         super().__init__(model, mode, step, substrate_fn)
+        self.hm_type = hm_type
+        self.txt_embedding = txt_embedding
+        self.txts = txts
+        self.resize = resize
         
     def single_run(self,
                    img_tensor,
@@ -225,7 +229,14 @@ class AdversarialCausalMetric(CausalMetric):
             x_adv = torch.clamp(x + delta, clip_min, clip_max)
 
             # Ranking is treated as fixed in each PGD iteration.
-            saliency = explanation_fn(x_adv.detach())
+            saliency = explanation_fn(
+                self.hm_type,
+                x_adv,
+                self.txt_embedding,
+                self.txts,
+                self.resize
+            )
+            # saliency = explanation_fn(x_adv.detach())
             if isinstance(saliency, torch.Tensor):
                 saliency = saliency.detach().cpu().numpy()
             saliency = np.asarray(saliency)
