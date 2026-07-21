@@ -172,16 +172,13 @@ class AdversarialCausalMetric(CausalMetric):
         self.raw_model = raw_model
         
     def single_run(self,
-                   img_tensor,
-                   img_notnormalized,
+                   img_raw, # unnormalized image
                    explanation_fn,
                    target_class=None,
                    eps=32.0 / 255.0,
                    alpha=4.0 / 255.0,
                    pgd_steps=100,
                    deletion_steps=100,
-                   margin=0.0,
-                   lambda_del=1.0,
                    clip_min=0.0,
                    clip_max=1.0,
                    return_details=True,
@@ -189,7 +186,7 @@ class AdversarialCausalMetric(CausalMetric):
         r"""PGD attack on a single image with classification + deletion loss.
 
         Args:
-            img_tensor (Tensor): normalized input image tensor with shape (1, C, H, W).
+            img_raw (Tensor): unnormalized input image tensor with shape (1, C, H, W).
             explanation_fn (callable): function G that returns saliency for a given image.
             target_class (int, optional): class index c. If None, use model top-1 on clean image.
             eps (float): L_inf perturbation budget.
@@ -206,22 +203,21 @@ class AdversarialCausalMetric(CausalMetric):
         Returns:
             Tensor or (Tensor, dict): adversarial image x_adv, and optional details.
         """
-        if img_tensor.shape[0] != 1:
+        if img_raw.shape[0] != 1:
             raise ValueError('AdversarialCausalMetric.single_run expects batch size 1.')
 
         try:
             device = next(self.model.parameters()).device
         except StopIteration:
-            device = img_tensor.device
+            device = img_raw.device
 
-        x = img_tensor.detach().to(device)
+        x_raw = img_raw.detach().to(device) # unnormalized image
         with torch.no_grad():
-            clean_logits = self.model(x)
+            clean_logits = self.model(normalize_ImageNet1k(x_raw))
             if target_class is None:
                 target_class = int(torch.argmax(clean_logits, dim=1).item())
 
-        delta = torch.zeros_like(x, requires_grad=True)
-        # deletion_steps = int(max(1, deletion_steps))
+        delta = torch.zeros_like(x_raw, requires_grad=True)
         deletion_steps = (HW + self.step - 1) // self.step
         deletion_steps = int(max(1, deletion_steps))
         details = {
@@ -231,30 +227,30 @@ class AdversarialCausalMetric(CausalMetric):
         }
 
         for k in range(pgd_steps):
-            x_adv = torch.clamp(x + delta, clip_min, clip_max)
-
+            x_raw_adv = torch.clamp(x_raw + delta, clip_min, clip_max)
+            x_adv_normalzie = normalize_ImageNet1k(x_raw_adv)
+    
             # Ranking is treated as fixed in each PGD iteration.
             saliency = explanation_fn(
-                self.raw_model,
-                self.hm_type,
-                x_adv,
+                self.raw_model, # clip_model (not including the softmax)
+                self.hm_type, # edclip,gradcam
+                x_adv_normalzie, # normalzied image
                 self.txt_embedding,
                 self.txts,
                 self.resize,
                 self.preprocess
             )
-            # saliency = explanation_fn(x_adv.detach())
             if isinstance(saliency, torch.Tensor):
                 saliency = saliency.detach().cpu().numpy()
             saliency = np.asarray(saliency)
             salient_order = np.flip(np.argsort(saliency.reshape(-1, HW), axis=1), axis=-1).copy()
 
             if self.mode == 'del':
-                xt = x_adv
-                finish = self.substrate_fn(x_adv)
+                xt = x_raw_adv
+                finish = self.substrate_fn(x_raw_adv)
             elif self.mode == 'ins':
-                xt = self.substrate_fn(x_adv)
-                finish = x_adv
+                xt = self.substrate_fn(x_raw_adv)
+                finish = x_raw_adv
             else:
                 raise ValueError("mode must be 'del' or 'ins'")
 
@@ -264,6 +260,7 @@ class AdversarialCausalMetric(CausalMetric):
             for t in range(deletion_steps):
                 logits_t = self.model(xt)
                 p_t = logits_t[:, target_class]
+                l_del = l_del + p_t # aggregation
 
                 start_idx = self.step * t
                 end_idx = min(HW, self.step * (t + 1))
@@ -279,20 +276,11 @@ class AdversarialCausalMetric(CausalMetric):
                 xt_next = xt.clone()
                 xt_next_flat = xt_next.view(1, 3, HW)
                 xt_next_flat[0, :, coords] = finish_flat[0, :, coords]
-
-                logits_next = self.model(xt_next)
-                p_next = logits_next[:, target_class]
-                l_del = l_del + torch.relu(p_next + margin)
-                # l_del = l_del + torch.relu(p_t - p_next + margin)
-
                 xt = xt_next
 
-            logits_adv = self.model(x_adv)
-            l_cls = logits_adv[:, target_class]
-            loss = l_cls + lambda_del * l_del
-            # loss = lambda_del * l_del
-            print("Loss: ", loss.item())
-            loss = loss.mean()
+            logits_last = self.model(xt) # last logitss
+            l_del += logits_last[:, target_class]
+            loss = l_del / deletion_steps # average deletion loss
 
             if delta.grad is not None:
                 delta.grad.zero_()
@@ -307,20 +295,15 @@ class AdversarialCausalMetric(CausalMetric):
             delta = delta.detach().requires_grad_(True)
 
             details['loss'].append(float(loss.item()))
-            details['loss_cls'].append(float(l_cls.mean().item()))
-            details['loss_del'].append(float(l_del.mean().item()))
 
             if verbose:
-                print('PGD {}/{} | L={:.6f} L_cls={:.6f} L_del={:.6f}'.format(
+                print('PGD {}/{} | L={:.6f}'.format(
                     k + 1,
                     pgd_steps,
-                    details['loss'][-1],
-                    details['loss_cls'][-1],
-                    details['loss_del'][-1]
+                    details['loss'][-1]
                 ))
 
-        x_adv = torch.clamp(img_notnormalized + delta.detach(), clip_min, clip_max)
+        x_raw_adv = torch.clamp(x_raw + delta.detach(), clip_min, clip_max)
         if return_details:
-            return x_adv, details
-        return x_adv
-
+            return x_raw_adv, details
+        return x_raw_adv

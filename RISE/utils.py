@@ -63,3 +63,21 @@ class RangeSampler(Sampler):
 
     def __len__(self):
         return len(self.r)
+
+
+
+def denorm_ImageNet1k(x):
+    mean = torch.tensor([0.48145466, 0.4578275, 0.40821073],
+                        device=x.device).view(1,3,1,1)
+    std = torch.tensor([0.26862954, 0.26130258, 0.27577711],
+                       device=x.device).view(1,3,1,1)
+    return (x * std + mean).clamp(0,1)
+
+def normalize_ImageNet1k(x):
+    mean = torch.tensor([0.48145466, 0.4578275, 0.40821073],
+                        device=x.device).view(1,3,1,1)
+    std = torch.tensor([0.26862954, 0.26130258, 0.27577711],
+                       device=x.device).view(1,3,1,1)
+    return (x - mean) / std
+        
+        
