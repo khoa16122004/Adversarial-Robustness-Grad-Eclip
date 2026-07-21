@@ -176,14 +176,14 @@ class AdversarialCausalMetric(CausalMetric):
                    img_notnormalized,
                    explanation_fn,
                    target_class=None,
-                   eps=8.0 / 255.0,
+                   eps=16.0 / 255.0,
                    alpha=1.0 / 255.0,
                    pgd_steps=50,
                    deletion_steps=50,
                    margin=0.0,
                    lambda_del=1.0,
-                   clip_min=-3.0,
-                   clip_max=3.0,
+                   clip_min=0.0,
+                   clip_max=1.0,
                    return_details=True,
                    verbose=0):
         r"""PGD attack on a single image with classification + deletion loss.
@@ -297,7 +297,6 @@ class AdversarialCausalMetric(CausalMetric):
             with torch.no_grad():
                 delta += alpha * delta.grad.sign()
                 delta.clamp_(-eps, eps)
-                delta.copy_(torch.clamp(x + delta, clip_min, clip_max) - x)
             delta = delta.detach().requires_grad_(True)
 
             details['loss'].append(float(loss.item()))
