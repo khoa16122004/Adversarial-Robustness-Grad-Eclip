@@ -244,13 +244,14 @@ class AdversarialCausalMetric(CausalMetric):
                 saliency = saliency.detach().cpu().numpy()
             saliency = np.asarray(saliency)
             salient_order = np.flip(np.argsort(saliency.reshape(-1, HW), axis=1), axis=-1).copy()
-
+            print(self.mode == 'ins')
             if self.mode == 'del':
                 xt = x_raw_adv
                 finish = self.substrate_fn(x_raw_adv)
             elif self.mode == 'ins':
                 xt = self.substrate_fn(x_raw_adv)
                 finish = x_raw_adv
+                print("Using inss")
             else:
                 raise ValueError("mode must be 'del' or 'ins'")
             finish_flat = finish.view(1, 3, HW)
