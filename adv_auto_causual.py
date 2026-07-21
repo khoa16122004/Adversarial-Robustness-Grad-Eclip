@@ -56,6 +56,7 @@ def parse_args():
     parser.add_argument("--eps", type=float, default=32.0, help="Maximum perturbation for adversarial attack (in pixel values)")
     parser.add_argument("--alpha", type=float, default=8.0, help="Step size for adversarial attack (in pixel values)")
     parser.add_argument("--pgd-steps", type=int, default=50, help="Number of PGD steps for adversarial attack")
+    parser.add_argument("--mode", default="del", choices=["del", "ins"], help="Causal metric mode: deletion or insertion")
     parser.add_argument(
         "--verbose",
         type=int,
