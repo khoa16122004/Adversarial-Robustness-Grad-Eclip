@@ -160,6 +160,8 @@ def main():
         os.makedirs(deletion_process_dir, exist_ok=True)
         os.makedirs(insertion_process_dir, exist_ok=True)
 
+    print(saliency.shape)
+    raise
     deletion_curve = deletion.single_run(
         image_tensor,
         saliency,
