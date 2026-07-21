@@ -100,14 +100,13 @@ def save_outputs(output_json, output_txt, payload):
         f.write("\n".join(lines) + "\n")
 
 
-def save_clip_image(x, path):
+    
+def denorm(x):
     mean = torch.tensor([0.48145466, 0.4578275, 0.40821073],
                         device=x.device).view(1,3,1,1)
     std = torch.tensor([0.26862954, 0.26130258, 0.27577711],
                        device=x.device).view(1,3,1,1)
-
-    img = (x * std + mean).clamp(0,1)
-    save_image(img, path)
+    return (x * std + mean).clamp(0,1)
 
 
 def main():
@@ -183,7 +182,7 @@ def main():
         generate_hm, # explain function
     )
     x_adv = x_adv.detach().cpu()
-    save_clip_image(x_adv, os.path.join(args.output_dir, "adversarial_image.png"))
+    save_image(denorm(x_adv), os.path.join(args.output_dir, "adversarial_image.png"))
     
     
     # rerun
@@ -205,6 +204,15 @@ def main():
         saliency,
         verbose=args.verbose,
         save_to=deletion_process_dir if args.save_process else None,
+    )
+    save_causal_metric_summary(
+        image_tensor=denorm(x_adv),
+        final_tensor=torch.zeros_like(x_adv),
+        scores=deletion_curve,
+        output_path=deletion_summary_path,
+        mode="del",
+        class_name=IMAGENET_CLASSNAMES[pred_label],
+        preprocess=preprocess,
     )
 
 
