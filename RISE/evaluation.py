@@ -280,7 +280,8 @@ class AdversarialCausalMetric(CausalMetric):
 
                 logits_next = self.model(xt_next)
                 p_next = logits_next[:, target_class]
-                l_del = l_del + torch.relu(p_t - p_next + margin)
+                l_del = l_del + torch.relu(p_next + margin)
+                # l_del = l_del + torch.relu(p_t - p_next + margin)
 
                 xt = xt_next
 
