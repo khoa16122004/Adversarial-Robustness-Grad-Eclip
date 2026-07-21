@@ -238,6 +238,8 @@ def main():
         class_name=IMAGENET_CLASSNAMES[pred_label],
         preprocess=preprocess,
     )
+    
+    print("Auc: ", auc(curve))
 
 
 
