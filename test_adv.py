@@ -91,7 +91,6 @@ def save_outputs(output_json, output_txt, payload):
         f"target_label: {payload['target_label']}",
         f"target_classname: {payload['target_classname']}",
         f"deletion_auc: {payload['deletion_auc']:.6f}",
-        f"insertion_auc: {payload['insertion_auc']:.6f}",
     ]
     if payload["gt_label"] is not None:
         lines.append(f"gt_label: {payload['gt_label']}")
