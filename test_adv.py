@@ -134,7 +134,7 @@ def main():
     input_resolution = clip_model.visual.input_resolution
     resized_image = image.resize((input_resolution, input_resolution), Image.BICUBIC)
     image_tensor = preprocess(resized_image).unsqueeze(0) # đã normqlize
-    image_notnormalized = denorm(image_tensor)
+    image_notnormalized = denorm(image_tensor).to(device) # chưa normalize
     metric_resize = Resize(tuple(image_tensor.shape[-2:]))
 
     _, _, pred_label, pred_confidence = predict_zero_shot_clip(classifier, image_tensor, device)
