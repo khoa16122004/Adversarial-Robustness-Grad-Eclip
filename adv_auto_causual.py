@@ -232,8 +232,8 @@ def main():
     )
 
     save_causal_metric_summary(
-        image_tensor=x_adv,
-        final_tensor=torch.zeros_like(x_adv) if args.mode == "del" else x_adv,
+        image_tensor=x_adv_normalize,
+        final_tensor=torch.zeros_like(x_adv) if args.mode == "del" else x_adv_normalize,
         scores=curve,
         output_path=os.path.join(args.output_dir, f"{args.mode}_summary.png"),
         mode=args.mode,
