@@ -108,6 +108,12 @@ def denorm(x):
                        device=x.device).view(1,3,1,1)
     return (x * std + mean).clamp(0,1)
 
+def normalize(x):
+    mean = torch.tensor([0.48145466, 0.4578275, 0.40821073],
+                        device=x.device).view(1,3,1,1)
+    std = torch.tensor([0.26862954, 0.26130258, 0.27577711],
+                       device=x.device).view(1,3,1,1)
+    return (x - mean) / std
 
 def main():
     args = parse_args()
@@ -184,8 +190,8 @@ def main():
         generate_hm, # explain function
     )
     x_adv = x_adv.detach().cpu()
-    save_image(denorm(x_adv), os.path.join(args.output_dir, "adversarial_image.png"))
-    
+    save_image(x_adv, os.path.join(args.output_dir, "adversarial_image.png"))
+    x_adv_normalize = normalize(x_adv) 
     
     # rerun
     deletion = CausalMetric(metric_model, "del", args.step, substrate_fn=lambda x: torch.zeros_like(x))
@@ -194,7 +200,7 @@ def main():
         clip_model,
         args.hm_type,
         # resized_image,
-        x_adv, # replace resized_image
+        x_adv_normalize, # replace resized_image
         text_embedding,
         target_texts,
         metric_resize,
@@ -202,13 +208,13 @@ def main():
     )
     deletion_summary_path = os.path.join(args.output_dir, "deletion_summary.png")
     deletion_curve = deletion.single_run(
-        x_adv,
+        x_adv_normalize,
         saliency,
         verbose=args.verbose,
         save_to=deletion_process_dir if args.save_process else None,
     )
     save_causal_metric_summary(
-        image_tensor=denorm(x_adv),
+        image_tensor=x_adv,
         final_tensor=torch.zeros_like(x_adv),
         scores=deletion_curve,
         output_path=deletion_summary_path,
