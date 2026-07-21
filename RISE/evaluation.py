@@ -231,6 +231,7 @@ class AdversarialCausalMetric(CausalMetric):
 
             # Ranking is treated as fixed in each PGD iteration.
             saliency = explanation_fn(
+                self.model,
                 self.hm_type,
                 x_adv,
                 self.txt_embedding,
