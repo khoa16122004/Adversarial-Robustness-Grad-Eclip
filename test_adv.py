@@ -168,10 +168,12 @@ def main():
     if args.save_process:
         os.makedirs(deletion_process_dir, exist_ok=True)
 
-    deletion_curve = adv_deletion.single_run(
+    x_adv, details = adv_deletion.single_run(
         image_tensor,
         generate_hm, # explain function
     )
+    print(x_adv.shape)
+    raise
  
 
     deletion_summary_path = os.path.join(args.output_dir, "deletion_summary.png")
