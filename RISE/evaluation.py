@@ -244,7 +244,7 @@ class AdversarialCausalMetric(CausalMetric):
             if isinstance(saliency, torch.Tensor):
                 saliency = saliency.detach().cpu().numpy()
             saliency = np.asarray(saliency)
-            salient_order = np.flip(np.argsort(saliency.reshape(-1, HW), axis=1), axis=-1)
+            salient_order = np.flip(np.argsort(saliency.reshape(-1, HW), axis=1), axis=-1).copy()
 
             if self.mode == 'del':
                 xt = x_adv
