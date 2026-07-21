@@ -82,8 +82,6 @@ def build_blur_substrate(gkern_or_kernel_size=11, kernel_size=11, kernel_sigma=5
     kernel = gkern_fn(kernel_size, kernel_sigma)
 
     def blur_fn(x):
-        print(x.shape)
-        raise
         kernel_on_device = kernel.to(device=x.device, dtype=x.dtype)
         return nn.functional.conv2d(x, kernel_on_device, padding=kernel_size // 2)
 
