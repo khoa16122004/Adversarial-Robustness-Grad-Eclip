@@ -160,8 +160,10 @@ def main():
         args.output_dir,
         stem=f"{args.hm_type}_saliency",
     )
-    print(args.mode)
-    step_function = lambda x: torch.zeros_like(x) if args.mode == "del" else blur_fn
+    if args.mode == "del":
+        step_function = lambda x: torch.zeros_like(x)
+    else:
+        step_function = blur_fn
     print(f"step_function: {step_function}")
 
     # ================================================ adversarial attack ================
