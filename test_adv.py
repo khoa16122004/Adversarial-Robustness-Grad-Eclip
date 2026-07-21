@@ -177,16 +177,22 @@ def main():
     deletion = CausalMetric(metric_model, "del", args.step, substrate_fn=lambda x: torch.zeros_like(x))
     deletion_curve = deletion.single_run(x_adv, generate_hm, return_details=False)
  
-
+    heatmap = generate_hm(
+        clip_model,
+        args.hm_type,
+        # resized_image,
+        x_adv, # replace resized_image
+        text_embedding,
+        target_texts,
+        metric_resize,
+        preprocess,
+    )
     deletion_summary_path = os.path.join(args.output_dir, "deletion_summary.png")
-    save_causal_metric_summary(
-        image_tensor=x_adv,
-        final_tensor=torch.zeros_like(x_adv),
-        scores=deletion_curve,
-        output_path=deletion_summary_path,
-        mode="del",
-        class_name=IMAGENET_CLASSNAMES[pred_label],
-        preprocess=preprocess,
+    deletion_curve = deletion.single_run(
+        x_adv,
+        saliency,
+        verbose=args.verbose,
+        save_to=deletion_process_dir if args.save_process else None,
     )
 
 
