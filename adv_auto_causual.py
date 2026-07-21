@@ -162,7 +162,7 @@ def main():
     )
     
     step_function = lambda x: torch.zeros_like(x) if args.mode == "del" else blur_fn
-
+    print(f"step_function: {step_function}")
 
     # ================================================ adversarial attack ================
 
