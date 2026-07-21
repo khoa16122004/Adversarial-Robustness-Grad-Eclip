@@ -161,7 +161,7 @@ def main():
         stem=f"{args.hm_type}_saliency",
     )
     
-    step_function = lambda x: torch.zeros_like(x) if args.hm_type == "del" else blur_fn
+    step_function = lambda x: torch.zeros_like(x) if args.mode == "del" else blur_fn
 
 
     # ================================================ adversarial attack ================
