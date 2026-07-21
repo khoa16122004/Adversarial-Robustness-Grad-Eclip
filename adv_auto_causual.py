@@ -53,9 +53,9 @@ def parse_args():
     parser.add_argument("--output-txt", default="test_eval_result.txt", help="Where to save a short text summary")
     parser.add_argument("--output-dir", default="test_eval_outputs", help="Where to save generated images")
     parser.add_argument("--save-process", action="store_true", help="Save every deletion/insertion step image")
-    parser.add_argument("--eps", type=float, default=8.0, help="Maximum perturbation for adversarial attack (in pixel values)")
-    parser.add_argument("--alpha", type=float, default=2.0, help="Step size for adversarial attack (in pixel values)")
-    parser.add_argument("--pgd-steps", type=int, default=10, help="Number of PGD steps for adversarial attack")
+    parser.add_argument("--eps", type=float, default=32.0, help="Maximum perturbation for adversarial attack (in pixel values)")
+    parser.add_argument("--alpha", type=float, default=8.0, help="Step size for adversarial attack (in pixel values)")
+    parser.add_argument("--pgd-steps", type=int, default=50, help="Number of PGD steps for adversarial attack")
     parser.add_argument(
         "--verbose",
         type=int,
@@ -168,7 +168,7 @@ def main():
     adv_causualmetric = AdversarialCausalMetric(
         metric_model, # softmax head model
         clip_model, # raw model
-        args.modes,
+        args.mode,
         args.step,
         step_function,
         args.hm_type,
