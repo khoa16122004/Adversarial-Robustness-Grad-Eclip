@@ -288,6 +288,7 @@ class AdversarialCausalMetric(CausalMetric):
             l_cls = logits_adv[:, target_class]
             # loss = l_cls + lambda_del * l_del
             loss = lambda_del * l_del
+            print("Loss: ", loss.item())
             loss = loss.mean()
 
             if delta.grad is not None:
