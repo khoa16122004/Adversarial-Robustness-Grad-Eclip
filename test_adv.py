@@ -7,6 +7,7 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 from torchvision.transforms import Resize
+from torchvision.utils import save_image
 
 from imagenet_metadata import IMAGENET_CLASSNAMES
 from util import (
@@ -18,7 +19,7 @@ from util import (
     save_causal_metric_summary,
     save_saliency_outputs,
 )
-from RISE.evaluation import AdversarialCausalMetric, auc
+from RISE.evaluation import AdversarialCausalMetric, CausalMetric, auc
 
 
 def parse_args():
@@ -172,15 +173,15 @@ def main():
         image_tensor,
         generate_hm, # explain function
     )
-    print(x_adv.shape)
-    raise
+    save_image(x_adv, os.path.join(args.output_dir, "adversarial_image.png"))
+    deletion = CausalMetric(metric_model, "del", args.step, substrate_fn=lambda x: torch.zeros_like(x))
+    deletion_curve = deletion.single_run(x_adv, generate_hm, return_details=False)
  
 
     deletion_summary_path = os.path.join(args.output_dir, "deletion_summary.png")
-    insertion_summary_path = os.path.join(args.output_dir, "insertion_summary.png")
     save_causal_metric_summary(
-        image_tensor=image_tensor,
-        final_tensor=torch.zeros_like(image_tensor),
+        image_tensor=x_adv,
+        final_tensor=torch.zeros_like(x_adv),
         scores=deletion_curve,
         output_path=deletion_summary_path,
         mode="del",
