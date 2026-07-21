@@ -173,6 +173,7 @@ class AdversarialCausalMetric(CausalMetric):
         
     def single_run(self,
                    img_tensor,
+                   img_notnormalized,
                    explanation_fn,
                    target_class=None,
                    eps=8.0 / 255.0,
@@ -311,7 +312,7 @@ class AdversarialCausalMetric(CausalMetric):
                     details['loss_del'][-1]
                 ))
 
-        x_adv = torch.clamp(x + delta.detach(), clip_min, clip_max)
+        x_adv = torch.clamp(img_notnormalized + delta.detach(), clip_min, clip_max)
         if return_details:
             return x_adv, details
         return x_adv
