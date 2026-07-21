@@ -224,7 +224,7 @@ def main():
     )
     curve = clean_causualmetric.single_run(
         x_adv_normalize,
-        heatmap,
+        saliency,
         verbose=args.verbose,
         save_to=process_dir if args.save_process else None,
     )
