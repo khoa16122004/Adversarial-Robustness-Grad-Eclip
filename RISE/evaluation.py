@@ -72,6 +72,7 @@ class CausalMetric():
             title = 'Insertion game'
             ylabel = 'Pixels inserted'
             start = self.substrate_fn(img_tensor)
+            
             finish = img_tensor.clone()
 
         scores = np.empty(n_steps + 1)
@@ -229,7 +230,7 @@ class AdversarialCausalMetric(CausalMetric):
         for k in range(pgd_steps):
             x_raw_adv = torch.clamp(x_raw + delta, clip_min, clip_max)
             x_adv_normalzie = normalize_ImageNet1k(x_raw_adv)
-    
+            print(x_raw_adv)
             # Ranking is treated as fixed in each PGD iteration.
             saliency = explanation_fn(
                 self.raw_model, # clip_model (not including the softmax)
@@ -244,14 +245,12 @@ class AdversarialCausalMetric(CausalMetric):
                 saliency = saliency.detach().cpu().numpy()
             saliency = np.asarray(saliency)
             salient_order = np.flip(np.argsort(saliency.reshape(-1, HW), axis=1), axis=-1).copy()
-            print(self.mode == 'ins')
             if self.mode == 'del':
                 xt = x_raw_adv
                 finish = self.substrate_fn(x_raw_adv)
             elif self.mode == 'ins':
                 xt = self.substrate_fn(x_raw_adv)
                 finish = x_raw_adv
-                print("Using inss")
             else:
                 raise ValueError("mode must be 'del' or 'ins'")
             finish_flat = finish.view(1, 3, HW)
