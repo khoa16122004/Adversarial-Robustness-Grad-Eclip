@@ -206,6 +206,12 @@ def main():
         metric_resize,
         preprocess,
     )
+    saliency_raw_path, saliency_heatmap_path, saliency_overlay_path = save_saliency_outputs(
+        heatmap,
+        resized_image,
+        args.output_dir,
+        stem=f"adv_{args.hm_type}_saliency",
+    )
     deletion_summary_path = os.path.join(args.output_dir, "deletion_summary.png")
     deletion_curve = deletion.single_run(
         x_adv_normalize,
