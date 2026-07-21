@@ -174,8 +174,10 @@ def main():
         generate_hm, # explain function
     )
     save_image(x_adv, os.path.join(args.output_dir, "adversarial_image.png"))
+    
+    
+    # rerun
     deletion = CausalMetric(metric_model, "del", args.step, substrate_fn=lambda x: torch.zeros_like(x))
-    deletion_curve = deletion.single_run(x_adv, generate_hm, return_details=False)
  
     heatmap = generate_hm(
         clip_model,
