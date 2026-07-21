@@ -159,3 +159,145 @@ class CausalMetric():
             start.cpu().numpy().reshape(n_samples, 3, HW)[r, :, coords] = finish.cpu().numpy().reshape(n_samples, 3, HW)[r, :, coords]
         print('AUC: {}'.format(auc(scores.mean(1))))
         return scores
+    
+    
+class AdversarialCausalMetric(CausalMetric):
+    def __init__(self, model, mode, step, substrate_fn):
+        super().__init__(model, mode, step, substrate_fn)
+        
+    def single_run(self,
+                   img_tensor,
+                   explanation_fn,
+                   target_class=None,
+                   eps=8.0 / 255.0,
+                   alpha=1.0 / 255.0,
+                   pgd_steps=10,
+                   deletion_steps=50,
+                   margin=0.0,
+                   lambda_del=1.0,
+                   clip_min=-3.0,
+                   clip_max=3.0,
+                   return_details=False,
+                   verbose=0):
+        r"""PGD attack on a single image with classification + deletion loss.
+
+        Args:
+            img_tensor (Tensor): normalized input image tensor with shape (1, C, H, W).
+            explanation_fn (callable): function G that returns saliency for a given image.
+            target_class (int, optional): class index c. If None, use model top-1 on clean image.
+            eps (float): L_inf perturbation budget.
+            alpha (float): PGD step size.
+            pgd_steps (int): number of PGD iterations.
+            deletion_steps (int): number of deletion iterations T.
+            margin (float): hinge margin m in deletion loss.
+            lambda_del (float): weight for deletion loss.
+            clip_min (float): minimum value for clamped normalized image.
+            clip_max (float): maximum value for clamped normalized image.
+            return_details (bool): whether to return optimization logs.
+            verbose (int): if > 0, prints attack progress.
+
+        Returns:
+            Tensor or (Tensor, dict): adversarial image x_adv, and optional details.
+        """
+        if img_tensor.shape[0] != 1:
+            raise ValueError('AdversarialCausalMetric.single_run expects batch size 1.')
+
+        try:
+            device = next(self.model.parameters()).device
+        except StopIteration:
+            device = img_tensor.device
+
+        x = img_tensor.detach().to(device)
+        with torch.no_grad():
+            clean_logits = self.model(x)
+            if target_class is None:
+                target_class = int(torch.argmax(clean_logits, dim=1).item())
+
+        delta = torch.zeros_like(x, requires_grad=True)
+        deletion_steps = int(max(1, deletion_steps))
+        details = {
+            'loss': [],
+            'loss_cls': [],
+            'loss_del': []
+        }
+
+        for k in range(pgd_steps):
+            x_adv = torch.clamp(x + delta, clip_min, clip_max)
+
+            # Ranking is treated as fixed in each PGD iteration.
+            saliency = explanation_fn(x_adv.detach())
+            if isinstance(saliency, torch.Tensor):
+                saliency = saliency.detach().cpu().numpy()
+            saliency = np.asarray(saliency)
+            salient_order = np.flip(np.argsort(saliency.reshape(-1, HW), axis=1), axis=-1)
+
+            if self.mode == 'del':
+                xt = x_adv
+                finish = self.substrate_fn(x_adv)
+            elif self.mode == 'ins':
+                xt = self.substrate_fn(x_adv)
+                finish = x_adv
+            else:
+                raise ValueError("mode must be 'del' or 'ins'")
+
+            finish_flat = finish.view(1, 3, HW)
+            l_del = torch.zeros(1, device=device)
+
+            for t in range(deletion_steps):
+                logits_t = self.model(xt)
+                p_t = logits_t[:, target_class]
+
+                start_idx = self.step * t
+                end_idx = min(HW, self.step * (t + 1))
+                if start_idx >= HW:
+                    break
+
+                coords = torch.as_tensor(
+                    salient_order[0, start_idx:end_idx],
+                    device=device,
+                    dtype=torch.long
+                )
+
+                xt_next = xt.clone()
+                xt_next_flat = xt_next.view(1, 3, HW)
+                xt_next_flat[0, :, coords] = finish_flat[0, :, coords]
+
+                logits_next = self.model(xt_next)
+                p_next = logits_next[:, target_class]
+                l_del = l_del + torch.relu(p_t - p_next + margin)
+
+                xt = xt_next
+
+            logits_adv = self.model(x_adv)
+            l_cls = -logits_adv[:, target_class]
+            loss = l_cls + lambda_del * l_del
+            loss = loss.mean()
+
+            if delta.grad is not None:
+                delta.grad.zero_()
+            loss.backward()
+
+            with torch.no_grad():
+                delta += alpha * delta.grad.sign()
+                delta.clamp_(-eps, eps)
+                delta.copy_(torch.clamp(x + delta, clip_min, clip_max) - x)
+            delta = delta.detach().requires_grad_(True)
+
+            details['loss'].append(float(loss.item()))
+            details['loss_cls'].append(float(l_cls.mean().item()))
+            details['loss_del'].append(float(l_del.mean().item()))
+
+            if verbose:
+                print('PGD {}/{} | L={:.6f} L_cls={:.6f} L_del={:.6f}'.format(
+                    k + 1,
+                    pgd_steps,
+                    details['loss'][-1],
+                    details['loss_cls'][-1],
+                    details['loss_del'][-1]
+                ))
+
+        x_adv = torch.clamp(x + delta.detach(), clip_min, clip_max)
+        if return_details:
+            return x_adv, details
+        return x_adv
+

@@ -461,7 +461,8 @@ class CLIPExplainRunner:
 
     def generate_hm(self, hm_type, img, txt_embedding, txts, resize):
         start = time.time()
-        img_keepsized = imgprocess_keepsize(img).to(self.device).unsqueeze(0)
+        # img_keepsized = imgprocess_keepsize(img).to(self.device).unsqueeze(0)
+        img_keepsized = img.clone()
         outputs, v_final, last_input, v, q_out, k_out, \
             attn, att_output, map_size = clip_encode_dense(self.clipmodel, img_keepsized)
         img_embedding = F.normalize(outputs[:, 0], dim=-1)

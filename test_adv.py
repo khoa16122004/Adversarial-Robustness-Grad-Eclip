@@ -134,8 +134,7 @@ def main():
     heatmap = generate_hm(
         clip_model,
         args.hm_type,
-        # resized_image,
-        image_tensor, # replace resized_image
+        resized_image,
         text_embedding,
         target_texts,
         metric_resize,
@@ -151,28 +150,18 @@ def main():
         stem=f"{args.hm_type}_saliency",
     )
 
-    blur_fn = build_blur_substrate(args.kernel_size, args.kernel_sigma)
-    insertion = CausalMetric(metric_model, "ins", args.step, substrate_fn=blur_fn)
+    adv_deletion = AdversarialCausalMetric(metric_model, "del", args.step, substrate_fn=lambda x: torch.zeros_like(x))
     deletion = CausalMetric(metric_model, "del", args.step, substrate_fn=lambda x: torch.zeros_like(x))
 
     deletion_process_dir = os.path.join(args.output_dir, "deletion_steps")
-    insertion_process_dir = os.path.join(args.output_dir, "insertion_steps")
     if args.save_process:
         os.makedirs(deletion_process_dir, exist_ok=True)
-        os.makedirs(insertion_process_dir, exist_ok=True)
 
     deletion_curve = deletion.single_run(
         image_tensor,
-        saliency,
-        verbose=args.verbose,
-        save_to=deletion_process_dir if args.save_process else None,
+        generate_hm, # explain function
     )
-    insertion_curve = insertion.single_run(
-        image_tensor,
-        saliency,
-        verbose=args.verbose,
-        save_to=insertion_process_dir if args.save_process else None,
-    )
+ 
 
     deletion_summary_path = os.path.join(args.output_dir, "deletion_summary.png")
     insertion_summary_path = os.path.join(args.output_dir, "insertion_summary.png")
