@@ -248,13 +248,11 @@ class AdversarialCausalMetric(CausalMetric):
             if self.mode == 'del':
                 xt = x_raw_adv
                 finish = self.substrate_fn(x_raw_adv)
-                print(finish)
             elif self.mode == 'ins':
                 xt = self.substrate_fn(x_raw_adv)
                 finish = x_raw_adv
             else:
                 raise ValueError("mode must be 'del' or 'ins'")
-            print(finish)
             finish_flat = finish.view(1, 3, HW)
             l_del = torch.zeros(1, device=device)
 
