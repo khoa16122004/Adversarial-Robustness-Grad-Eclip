@@ -153,6 +153,7 @@ def main():
 
     adv_deletion = AdversarialCausalMetric(
         metric_model,
+        clip_model,
         'del',
         args.step,
         lambda x: torch.zeros_like(x),

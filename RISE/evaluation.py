@@ -162,13 +162,14 @@ class CausalMetric():
     
     
 class AdversarialCausalMetric(CausalMetric):
-    def __init__(self, model, mode, step, substrate_fn, hm_type, txt_embedding, txts, resize, preprocess):
+    def __init__(self, model, raw_model, mode, step, substrate_fn, hm_type, txt_embedding, txts, resize, preprocess):
         super().__init__(model, mode, step, substrate_fn)
         self.hm_type = hm_type
         self.txt_embedding = txt_embedding
         self.txts = txts
         self.resize = resize
         self.preprocess = preprocess
+        self.raw_model = raw_model
         
     def single_run(self,
                    img_tensor,
