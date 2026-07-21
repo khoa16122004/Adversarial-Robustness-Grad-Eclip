@@ -289,8 +289,8 @@ class AdversarialCausalMetric(CausalMetric):
 
             logits_adv = self.model(x_adv)
             l_cls = logits_adv[:, target_class]
-            # loss = l_cls + lambda_del * l_del
-            loss = lambda_del * l_del
+            loss = l_cls + lambda_del * l_del
+            # loss = lambda_del * l_del
             print("Loss: ", loss.item())
             loss = loss.mean()
 
