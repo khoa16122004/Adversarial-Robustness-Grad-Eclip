@@ -195,7 +195,7 @@ def main():
 
     
     
-    save_image(x_adv, os.path.join(args.output_dir, f"adversarial_image_{args.modes}.png"))
+    save_image(x_adv, os.path.join(args.output_dir, f"adversarial_image_{args.mode}.png"))
     
     
     x_adv_normalize = normalize_ImageNet1k(x_adv)
