@@ -222,7 +222,7 @@ class AdversarialCausalMetric(CausalMetric):
 
         delta = torch.zeros_like(x, requires_grad=True)
         # deletion_steps = int(max(1, deletion_steps))
-        deletion_steps = (224 + self.step - 1) // self.step
+        deletion_steps = (HW + self.step - 1) // self.step
         deletion_steps = int(max(1, deletion_steps))
         details = {
             'loss': [],
