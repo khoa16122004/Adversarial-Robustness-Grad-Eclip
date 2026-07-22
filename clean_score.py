@@ -112,7 +112,7 @@ def main():
         use_tqdm=True,
     )
     metric_model = build_causal_metric_model(classifier)
-    output_dir = os.path.join(args.output_dir, f"{args.mode}_{args.hm_type}")
+    output_dir = os.path.join(args.output_dir, f"{args.hm_type}")
     os.makedirs(output_dir, exist_ok=True)
     
     with open(args.sample_path, "r", encoding="utf-8") as f:
