@@ -226,8 +226,8 @@ class AdversarialCausalMetric(CausalMetric):
         deletion_steps = int(max(1, deletion_steps))
         details = {
             'loss': [],
-            'loss_cls': [],
-            'loss_del': []
+            'clean_prob': float(clean_logits[0, target_class].item()),
+            'adv_prob': [],
         }
 
         for k in range(pgd_steps):
@@ -316,6 +316,8 @@ class AdversarialCausalMetric(CausalMetric):
                 ))
 
         x_raw_adv = torch.clamp(x_raw + delta.detach(), clip_min, clip_max)
+        details['adv_prob'] = float(self.model(normalize_ImageNet1k(x_raw_adv))[0, target_class].item())
+
         if return_details:
             return x_raw_adv, details
         return x_raw_adv

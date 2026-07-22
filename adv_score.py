@@ -231,6 +231,8 @@ def main():
         curve_information = {
             'curve': curve.tolist(),
             'auc': float(auc(curve)),
+            'clean_prob': details['clean_prob'],
+            'adv_prob': details['adv_prob'],
         }
 
         
