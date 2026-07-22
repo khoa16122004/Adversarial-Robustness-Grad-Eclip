@@ -219,7 +219,7 @@ class AdversarialCausalMetric(CausalMetric):
             if target_class is None:
                 target_class = int(torch.argmax(clean_logits, dim=1).item())
         
-        clean_prob = clean_logits[0, target_class].item()
+        # clean_prob = clean_logits[0, target_class].item()
 
         delta = torch.zeros_like(x_raw, requires_grad=True)
         deletion_steps = (HW + self.step - 1) // self.step
@@ -234,7 +234,11 @@ class AdversarialCausalMetric(CausalMetric):
             x_raw_adv = torch.clamp(x_raw + delta, clip_min, clip_max)
             x_adv_normalzie = normalize_ImageNet1k(x_raw_adv)
             adv_logits = self.model(x_adv_normalzie)
-            l_preserve = F.mse_loss(adv_logits, clean_logits)
+            l_preserve = F.kl_div(
+                adv_logits,
+                clean_logits,
+                reduction='batchmean',
+            )
             # Ranking is treated as fixed in each PGD iteration.
             saliency = explanation_fn(
                 self.raw_model, # clip_model (not including the softmax)
