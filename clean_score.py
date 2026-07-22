@@ -45,6 +45,7 @@ def parse_args():
     parser.add_argument("--device", default=None, help="cuda or cpu")
     parser.add_argument("--output-dir", default="test_eval_outputs", help="Where to save generated images")
     parser.add_argument("--img-dir", default="magenet/valimages", help="Directory containing input images")
+    parser.add_argument("--sample-path", default="vit_b_16_1k.json", help="Path to JSON file containing image samples")
     parser.add_argument("--save-process", action="store_true", help="Save every deletion/insertion step image")
     parser.add_argument(
         "--verbose",
