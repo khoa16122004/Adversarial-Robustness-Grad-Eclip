@@ -3,7 +3,7 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 
-result_dir = "/home/jovyan/clean_causual/eclip"
+result_dir = "/home/jovyan/Adversarial-Robustness-Grad-Eclip/clean_causual/eclip"
 mode = "deletion"
 
 aucs = []
