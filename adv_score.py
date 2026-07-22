@@ -206,7 +206,7 @@ def main():
         save_saliency_outputs(
             heatmap.detach().cpu().numpy(),
             resized_image,
-            args.output_dir,
+            sample_dir,
             stem=f"{args.mode}_adv_{args.hm_type}_saliency",
         )
         
