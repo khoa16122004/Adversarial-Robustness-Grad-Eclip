@@ -292,7 +292,7 @@ class AdversarialCausalMetric(CausalMetric):
             if self.mode == 'del':
                 loss = l_del - l_preserve
             elif self.mode == 'ins':
-                loss = l_preserve - l_del
+                loss = l_del + l_preserve
             
             if delta.grad is not None:
                 delta.grad.zero_()
