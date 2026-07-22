@@ -20,6 +20,7 @@ from util import (
     save_causal_metric_summary,
     save_saliency_outputs,
 )
+from torchvision.utils import save_image
 from RISE.evaluation import AdversarialCausalMetric, CausalMetric, auc
 
 
@@ -108,6 +109,7 @@ def save_outputs(output_json, output_txt, payload):
 def main():
     args = parse_args()
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    blur_fn = build_blur_substrate(args.kernel_size, args.kernel_sigma) # function for insertion
 
     clip_model, preprocess = clip.load(args.clip_model, device=device)
     clip_model.eval()
@@ -150,24 +152,6 @@ def main():
             text_embedding = clip_model.encode_text(text_tokens)
             text_embedding = F.normalize(text_embedding, dim=-1)
             
-        heatmap = generate_hm(
-            clip_model,
-            args.hm_type,
-            image_normalized, # normalized image
-            text_embedding,
-            target_texts,
-            metric_resize,
-            preprocess,
-        )
-        
-        saliency = heatmap.detach().cpu().numpy()
-        
-        save_saliency_outputs(
-            heatmap,
-            resized_image,
-            os.path.join(sample_dir, "saliency"),
-            stem=f"{args.hm_type}_saliency",
-        )
         
         
         if args.mode == "del":
@@ -228,7 +212,7 @@ def main():
         
         curve = clean_causualmetric.single_run(
             x_adv_normalize,
-            saliency,
+            heatmap.detach().cpu().numpy(),
             verbose=args.verbose,
             save_to=causual_process_dir if args.save_process else None,
         )
