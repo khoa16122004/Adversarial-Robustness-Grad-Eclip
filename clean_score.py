@@ -119,7 +119,7 @@ def main():
     with open(args.sample_path, "r", encoding="utf-8") as f:
         sample_list = json.load(f)
     # evaluate loop
-    for folder_name, image_name in sample_list.items():
+    for folder_name, image_name in tqdm(sample_list.items()):
         # sample_dir
         sample_dir = os.path.join(output_dir, folder_name)
         os.makedirs(sample_dir, exist_ok=True)
