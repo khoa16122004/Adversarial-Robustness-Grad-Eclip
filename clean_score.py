@@ -25,7 +25,6 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Prototype deletion/insertion evaluation for CLIP zero-shot explanations"
     )
-    parser.add_argument("--image-path", required=True, help="Path to one RGB image")
     parser.add_argument("--clip-model", default="ViT-B/16", help="CLIP model name")
     parser.add_argument(
         "--hm-type",
