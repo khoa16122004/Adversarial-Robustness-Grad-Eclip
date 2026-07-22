@@ -57,4 +57,9 @@ plt.title(f"Average {mode.capitalize()} Curve")
 plt.grid(True)
 plt.legend()
 plt.tight_layout()
-plt.show()
+# Save figure
+save_path = os.path.join(f"{mode}_mean_curve.png")
+plt.savefig(save_path, dpi=300, bbox_inches="tight")
+plt.close()
+
+print(f"Saved curve to: {save_path}")
