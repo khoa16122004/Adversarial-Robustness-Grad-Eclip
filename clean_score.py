@@ -220,6 +220,12 @@ def main():
             json.dump(deletion_information, f, ensure_ascii=False, indent=2)
     
 
+"""
+Delection:
+Với một ảnh và một saliency, liệu có thể tạo ra được một ảnh từ ảnh gốc
+mà nếu ta xóa đi các pixel quan trọng theo saliency thì model sẽ giảm prob
+
+"""
 
    
 

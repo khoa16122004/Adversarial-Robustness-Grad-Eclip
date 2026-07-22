@@ -1,6 +1,7 @@
 from torch import nn
 from tqdm import tqdm
 from scipy.ndimage.filters import gaussian_filter
+import torch.nn.functional as F
 
 from .utils import *
 
@@ -217,6 +218,8 @@ class AdversarialCausalMetric(CausalMetric):
             clean_logits = self.model(normalize_ImageNet1k(x_raw))
             if target_class is None:
                 target_class = int(torch.argmax(clean_logits, dim=1).item())
+        
+        clean_prob = clean_logits[0, target_class].item()
 
         delta = torch.zeros_like(x_raw, requires_grad=True)
         deletion_steps = (HW + self.step - 1) // self.step
@@ -230,6 +233,8 @@ class AdversarialCausalMetric(CausalMetric):
         for k in range(pgd_steps):
             x_raw_adv = torch.clamp(x_raw + delta, clip_min, clip_max)
             x_adv_normalzie = normalize_ImageNet1k(x_raw_adv)
+            adv_logits = self.model(x_adv_normalzie)
+            l_preserve = F.mse_loss(adv_logits, clean_logits)
             # Ranking is treated as fixed in each PGD iteration.
             saliency = explanation_fn(
                 self.raw_model, # clip_model (not including the softmax)
@@ -255,8 +260,9 @@ class AdversarialCausalMetric(CausalMetric):
             finish_flat = finish.view(1, 3, HW)
             l_del = torch.zeros(1, device=device)
 
+
             for t in range(deletion_steps):
-                logits_t = self.model(xt)
+                logits_t = self.model(normalize_ImageNet1k(xt))
                 p_t = logits_t[:, target_class]
                 l_del = l_del + p_t # aggregation
 
@@ -276,10 +282,14 @@ class AdversarialCausalMetric(CausalMetric):
                 xt_next_flat[0, :, coords] = finish_flat[0, :, coords]
                 xt = xt_next
 
-            logits_last = self.model(xt) # last logitss
+            logits_last = self.model(normalize_ImageNet1k(xt)) # last logitss
             l_del += logits_last[:, target_class]
-            loss = l_del / deletion_steps # average deletion loss
-
+            l_del = l_del / deletion_steps # average deletion loss
+            if self.mode == 'del':
+                loss = l_del - l_preserve
+            elif self.mode == 'ins':
+                loss = l_preserve - l_del
+            
             if delta.grad is not None:
                 delta.grad.zero_()
             loss.backward()
