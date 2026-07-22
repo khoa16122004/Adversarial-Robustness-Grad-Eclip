@@ -112,7 +112,7 @@ def save_outputs(output_json, output_txt, payload):
 
 def main():
     args = parse_args()
-    blur_fn = build_blur_substrate(args.kernel_size, args.kernel_sigma)
+    blur_fn = build_blur_substrate(args.kernel_size, args.kernel_sigma) # function for insertion
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
 
     clip_model, preprocess = clip.load(args.clip_model, device=device)
@@ -164,7 +164,6 @@ def main():
         step_function = lambda x: torch.zeros_like(x)
     else:
         step_function = blur_fn
-    print(f"step_function: {step_function}")
 
     # ================================================ adversarial attack ================
 
