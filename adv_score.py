@@ -173,13 +173,6 @@ def main():
             metric_resize,
             preprocess
         )
-
-
-        
-        causual_process_dir = os.path.join(sample_dir, "steps")
-        if args.save_process:
-            os.makedirs(causual_process_dir, exist_ok=True)
-        
         x_adv, details = adv_causualmetric.single_run( # are not normalzied
             image_raw,
             generate_hm, # explain function
@@ -192,7 +185,6 @@ def main():
         x_adv_normalize = normalize_ImageNet1k(x_adv)
 
         # =============================== rerun ===============
-        clean_causualmetric = CausalMetric(metric_model, args.mode, args.step, step_function)
         heatmap = generate_hm(
             clip_model,
             args.hm_type,
@@ -202,40 +194,52 @@ def main():
             metric_resize,
             preprocess,
         )
-        
-        save_saliency_outputs(
-            heatmap.detach().cpu().numpy(),
-            resized_image,
-            sample_dir,
-            stem=f"{args.mode}_adv_{args.hm_type}_saliency",
-        )
-        
-        curve = clean_causualmetric.single_run(
-            x_adv_normalize,
-            heatmap.detach().cpu().numpy(),
-            verbose=args.verbose,
-            save_to=causual_process_dir if args.save_process else None,
-        )
-        
-        save_causal_metric_summary(
-            image_tensor=x_adv_normalize,
-            final_tensor=torch.zeros_like(x_adv) if args.mode == "del" else x_adv_normalize,
-            scores=curve,
-            output_path=os.path.join(sample_dir, f"{args.mode}_summary.png"),
-            mode=args.mode,
-            class_name=IMAGENET_CLASSNAMES[pred_label],
-            preprocess=preprocess,
-        )
-        
-        
+
+        rerun_results = {}
+        for rerun_mode in ["del", "ins"]:
+            rerun_step_function = (lambda x: torch.zeros_like(x)) if rerun_mode == "del" else blur_fn
+            clean_causualmetric = CausalMetric(metric_model, rerun_mode, args.step, rerun_step_function)
+
+            rerun_process_dir = os.path.join(sample_dir, f"steps_{rerun_mode}")
+            if args.save_process:
+                os.makedirs(rerun_process_dir, exist_ok=True)
+
+            save_saliency_outputs(
+                heatmap.detach().cpu().numpy(),
+                resized_image,
+                sample_dir,
+                stem=f"{rerun_mode}_adv_{args.hm_type}_saliency",
+            )
+
+            curve = clean_causualmetric.single_run(
+                x_adv_normalize,
+                heatmap.detach().cpu().numpy(),
+                verbose=args.verbose,
+                save_to=rerun_process_dir if args.save_process else None,
+            )
+
+            save_causal_metric_summary(
+                image_tensor=x_adv_normalize,
+                final_tensor=torch.zeros_like(x_adv) if rerun_mode == "del" else x_adv_normalize,
+                scores=curve,
+                output_path=os.path.join(sample_dir, f"{rerun_mode}_summary.png"),
+                mode=rerun_mode,
+                class_name=IMAGENET_CLASSNAMES[pred_label],
+                preprocess=preprocess,
+            )
+
+            rerun_results[rerun_mode] = {
+                "curve": curve.tolist(),
+                "auc": float(auc(curve)),
+            }
+
         curve_information = {
-            'curve': curve.tolist(),
-            'auc': float(auc(curve)),
-            'clean_prob': details['clean_prob'],
-            'adv_prob': details['adv_prob'],
+            "attack_mode": args.mode,
+            "clean_prob": details["clean_prob"],
+            "adv_prob": details["adv_prob"],
+            "rerun": rerun_results,
         }
 
-        
         with open(os.path.join(sample_dir, "curve_information.json"), "w", encoding="utf-8") as f:
             json.dump(curve_information, f, ensure_ascii=False, indent=2)
     
