@@ -479,6 +479,17 @@ class CLIPExplainRunner:
             self.surgery_model = build_surgery_model(f"CS-{self.clip_model_name}", base_state_dict).to(self.device)
             self.surgery_model.eval()
 
+    def _to_preprocessed_batch(self, img):
+        """Accept PIL image or already-preprocessed tensor and return a 4D batch tensor."""
+        if isinstance(img, torch.Tensor):
+            img_tensor = img.to(self.device)
+            if img_tensor.ndim == 3:
+                img_tensor = img_tensor.unsqueeze(0)
+            elif img_tensor.ndim != 4:
+                raise ValueError(f"Unsupported tensor shape for image input: {tuple(img_tensor.shape)}")
+            return img_tensor
+        return self.preprocess(img).to(self.device).unsqueeze(0)
+
     def generate_hm(self, hm_type, img, txt_embedding, txts, resize):
         # start = time.time()
         # img_keepsized = imgprocess_keepsize(img).to(self.device).unsqueeze(0)
@@ -507,7 +518,7 @@ class CLIPExplainRunner:
         elif "game" in hm_type:
             # start = time.time()
             self._ensure_mm_clipmodel()
-            img_clipreprocess = self.preprocess(img).to(self.device).unsqueeze(0)
+            img_clipreprocess = self._to_preprocessed_batch(img)
             text_tokenized = mm_clip.tokenize(txts).to(self.device)
             emap = mm_interpret(
                 model=self.mm_clipmodel,
@@ -519,7 +530,7 @@ class CLIPExplainRunner:
         elif "rollout" in hm_type:
             # start = time.time()
             self._ensure_mm_clipmodel()
-            img_clipreprocess = self.preprocess(img).to(self.device).unsqueeze(0)
+            img_clipreprocess = self._to_preprocessed_batch(img)
             text_tokenized = mm_clip.tokenize(txts).to(self.device)
             attentions = mm_interpret(
                 model=self.mm_clipmodel,
@@ -532,7 +543,7 @@ class CLIPExplainRunner:
         elif "surgery" in hm_type:
             # start = time.time()
             self._ensure_surgery_model()
-            img_clipreprocess = self.preprocess(img).to(self.device).unsqueeze(0)
+            img_clipreprocess = self._to_preprocessed_batch(img)
             all_texts = [
                 'airplane', 'bag', 'bed', 'bedclothes', 'bench', 'bicycle', 'bird', 'boat', 'book', 'bottle',
                 'building', 'bus', 'cabinet', 'car', 'cat', 'ceiling', 'chair', 'cloth', 'computer', 'cow',
@@ -550,7 +561,7 @@ class CLIPExplainRunner:
             )[0, :, :, 0]
         elif "m2ib" in hm_type:
             # start = time.time()
-            img_clipreprocess = self.preprocess(img).to(self.device).unsqueeze(0)
+            img_clipreprocess = self._to_preprocessed_batch(img)
             emap = m2ib_clip_map(
                 model=self.m2ib_model,
                 image=img_clipreprocess,
@@ -561,7 +572,7 @@ class CLIPExplainRunner:
             emap = torch.tensor(emap)
         elif "rise" in hm_type:
             # start = time.time()
-            img_clipreprocess = self.preprocess(img).unsqueeze(0)
+            img_clipreprocess = self._to_preprocessed_batch(img)
             emap = rise(model=self.clipmodel, image=img_clipreprocess, txt_embedding=txt_embedding, device=self.device)
         else:
             raise ValueError(f"Unknown hm_type: {hm_type}")
