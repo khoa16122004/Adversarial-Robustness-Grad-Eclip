@@ -237,6 +237,8 @@ def main():
             "attack_mode": args.mode,
             "clean_prob": details["clean_prob"],
             "adv_prob": details["adv_prob"],
+            "pgd_loss": details.get("loss", []),
+            "pgd_trace": details.get("pgd_trace", []),
             "rerun": rerun_results,
         }
 

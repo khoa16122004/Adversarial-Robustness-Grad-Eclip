@@ -228,6 +228,7 @@ class AdversarialCausalMetric(CausalMetric):
             'loss': [],
             'clean_prob': float(clean_logits[0, target_class].item()),
             'adv_prob': [],
+            'pgd_trace': [],
         }
 
         for k in range(pgd_steps):
@@ -263,12 +264,14 @@ class AdversarialCausalMetric(CausalMetric):
                 raise ValueError("mode must be 'del' or 'ins'")
             finish_flat = finish.view(1, 3, HW)
             l_del = torch.zeros(1, device=device)
+            p_t_trace = []
 
 
             for t in range(deletion_steps):
                 logits_t = self.model(normalize_ImageNet1k(xt))
                 p_t = logits_t[:, target_class]
                 l_del = l_del + p_t # aggregation
+                p_t_trace.append(float(p_t.item()))
 
                 start_idx = self.step * t
                 end_idx = min(HW, self.step * (t + 1))
@@ -307,6 +310,11 @@ class AdversarialCausalMetric(CausalMetric):
             delta = delta.detach().requires_grad_(True)
 
             details['loss'].append(float(loss.item()))
+            details['pgd_trace'].append({
+                'pgd_step': k + 1,
+                'loss': float(loss.item()),
+                'p_t': p_t_trace,
+            })
 
             if verbose:
                 print('PGD {}/{} | L={:.6f}'.format(
