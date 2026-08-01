@@ -1,0 +1,604 @@
+{
+  "items": [
+    {
+      "folder": "n02085620-Chihuahua",
+      "class_index": 0,
+      "class_name": "Chihuahua"
+    },
+    {
+      "folder": "n02085782-Japanese_spaniel",
+      "class_index": 1,
+      "class_name": "Japanese spaniel"
+    },
+    {
+      "folder": "n02085936-Maltese_dog",
+      "class_index": 2,
+      "class_name": "Maltese dog"
+    },
+    {
+      "folder": "n02086079-Pekinese",
+      "class_index": 3,
+      "class_name": "Pekinese"
+    },
+    {
+      "folder": "n02086240-Shih-Tzu",
+      "class_index": 4,
+      "class_name": "Shih-Tzu"
+    },
+    {
+      "folder": "n02086646-Blenheim_spaniel",
+      "class_index": 5,
+      "class_name": "Blenheim spaniel"
+    },
+    {
+      "folder": "n02086910-papillon",
+      "class_index": 6,
+      "class_name": "papillon"
+    },
+    {
+      "folder": "n02087046-toy_terrier",
+      "class_index": 7,
+      "class_name": "toy terrier"
+    },
+    {
+      "folder": "n02087394-Rhodesian_ridgeback",
+      "class_index": 8,
+      "class_name": "Rhodesian ridgeback"
+    },
+    {
+      "folder": "n02088094-Afghan_hound",
+      "class_index": 9,
+      "class_name": "Afghan hound"
+    },
+    {
+      "folder": "n02088238-basset",
+      "class_index": 10,
+      "class_name": "basset"
+    },
+    {
+      "folder": "n02088364-beagle",
+      "class_index": 11,
+      "class_name": "beagle"
+    },
+    {
+      "folder": "n02088466-bloodhound",
+      "class_index": 12,
+      "class_name": "bloodhound"
+    },
+    {
+      "folder": "n02088632-bluetick",
+      "class_index": 13,
+      "class_name": "bluetick"
+    },
+    {
+      "folder": "n02089078-black-and-tan_coonhound",
+      "class_index": 14,
+      "class_name": "black-and-tan coonhound"
+    },
+    {
+      "folder": "n02089867-Walker_hound",
+      "class_index": 15,
+      "class_name": "Walker hound"
+    },
+    {
+      "folder": "n02089973-English_foxhound",
+      "class_index": 16,
+      "class_name": "English foxhound"
+    },
+    {
+      "folder": "n02090379-redbone",
+      "class_index": 17,
+      "class_name": "redbone"
+    },
+    {
+      "folder": "n02090622-borzoi",
+      "class_index": 18,
+      "class_name": "borzoi"
+    },
+    {
+      "folder": "n02090721-Irish_wolfhound",
+      "class_index": 19,
+      "class_name": "Irish wolfhound"
+    },
+    {
+      "folder": "n02091032-Italian_greyhound",
+      "class_index": 20,
+      "class_name": "Italian greyhound"
+    },
+    {
+      "folder": "n02091134-whippet",
+      "class_index": 21,
+      "class_name": "whippet"
+    },
+    {
+      "folder": "n02091244-Ibizan_hound",
+      "class_index": 22,
+      "class_name": "Ibizan hound"
+    },
+    {
+      "folder": "n02091467-Norwegian_elkhound",
+      "class_index": 23,
+      "class_name": "Norwegian elkhound"
+    },
+    {
+      "folder": "n02091635-otterhound",
+      "class_index": 24,
+      "class_name": "otterhound"
+    },
+    {
+      "folder": "n02091831-Saluki",
+      "class_index": 25,
+      "class_name": "Saluki"
+    },
+    {
+      "folder": "n02092002-Scottish_deerhound",
+      "class_index": 26,
+      "class_name": "Scottish deerhound"
+    },
+    {
+      "folder": "n02092339-Weimaraner",
+      "class_index": 27,
+      "class_name": "Weimaraner"
+    },
+    {
+      "folder": "n02093256-Staffordshire_bullterrier",
+      "class_index": 28,
+      "class_name": "Staffordshire bullterrier"
+    },
+    {
+      "folder": "n02093428-American_Staffordshire_terrier",
+      "class_index": 29,
+      "class_name": "American Staffordshire terrier"
+    },
+    {
+      "folder": "n02093647-Bedlington_terrier",
+      "class_index": 30,
+      "class_name": "Bedlington terrier"
+    },
+    {
+      "folder": "n02093754-Border_terrier",
+      "class_index": 31,
+      "class_name": "Border terrier"
+    },
+    {
+      "folder": "n02093859-Kerry_blue_terrier",
+      "class_index": 32,
+      "class_name": "Kerry blue terrier"
+    },
+    {
+      "folder": "n02093991-Irish_terrier",
+      "class_index": 33,
+      "class_name": "Irish terrier"
+    },
+    {
+      "folder": "n02094114-Norfolk_terrier",
+      "class_index": 34,
+      "class_name": "Norfolk terrier"
+    },
+    {
+      "folder": "n02094258-Norwich_terrier",
+      "class_index": 35,
+      "class_name": "Norwich terrier"
+    },
+    {
+      "folder": "n02094433-Yorkshire_terrier",
+      "class_index": 36,
+      "class_name": "Yorkshire terrier"
+    },
+    {
+      "folder": "n02095314-wire-haired_fox_terrier",
+      "class_index": 37,
+      "class_name": "wire-haired fox terrier"
+    },
+    {
+      "folder": "n02095570-Lakeland_terrier",
+      "class_index": 38,
+      "class_name": "Lakeland terrier"
+    },
+    {
+      "folder": "n02095889-Sealyham_terrier",
+      "class_index": 39,
+      "class_name": "Sealyham terrier"
+    },
+    {
+      "folder": "n02096051-Airedale",
+      "class_index": 40,
+      "class_name": "Airedale"
+    },
+    {
+      "folder": "n02096177-cairn",
+      "class_index": 41,
+      "class_name": "cairn"
+    },
+    {
+      "folder": "n02096294-Australian_terrier",
+      "class_index": 42,
+      "class_name": "Australian terrier"
+    },
+    {
+      "folder": "n02096437-Dandie_Dinmont",
+      "class_index": 43,
+      "class_name": "Dandie Dinmont"
+    },
+    {
+      "folder": "n02096585-Boston_bull",
+      "class_index": 44,
+      "class_name": "Boston bull"
+    },
+    {
+      "folder": "n02097047-miniature_schnauzer",
+      "class_index": 45,
+      "class_name": "miniature schnauzer"
+    },
+    {
+      "folder": "n02097130-giant_schnauzer",
+      "class_index": 46,
+      "class_name": "giant schnauzer"
+    },
+    {
+      "folder": "n02097209-standard_schnauzer",
+      "class_index": 47,
+      "class_name": "standard schnauzer"
+    },
+    {
+      "folder": "n02097298-Scotch_terrier",
+      "class_index": 48,
+      "class_name": "Scotch terrier"
+    },
+    {
+      "folder": "n02097474-Tibetan_terrier",
+      "class_index": 49,
+      "class_name": "Tibetan terrier"
+    },
+    {
+      "folder": "n02097658-silky_terrier",
+      "class_index": 50,
+      "class_name": "silky terrier"
+    },
+    {
+      "folder": "n02098105-soft-coated_wheaten_terrier",
+      "class_index": 51,
+      "class_name": "soft-coated wheaten terrier"
+    },
+    {
+      "folder": "n02098286-West_Highland_white_terrier",
+      "class_index": 52,
+      "class_name": "West Highland white terrier"
+    },
+    {
+      "folder": "n02098413-Lhasa",
+      "class_index": 53,
+      "class_name": "Lhasa"
+    },
+    {
+      "folder": "n02099267-flat-coated_retriever",
+      "class_index": 54,
+      "class_name": "flat-coated retriever"
+    },
+    {
+      "folder": "n02099429-curly-coated_retriever",
+      "class_index": 55,
+      "class_name": "curly-coated retriever"
+    },
+    {
+      "folder": "n02099601-golden_retriever",
+      "class_index": 56,
+      "class_name": "golden retriever"
+    },
+    {
+      "folder": "n02099712-Labrador_retriever",
+      "class_index": 57,
+      "class_name": "Labrador retriever"
+    },
+    {
+      "folder": "n02099849-Chesapeake_Bay_retriever",
+      "class_index": 58,
+      "class_name": "Chesapeake Bay retriever"
+    },
+    {
+      "folder": "n02100236-German_short-haired_pointer",
+      "class_index": 59,
+      "class_name": "German short-haired pointer"
+    },
+    {
+      "folder": "n02100583-vizsla",
+      "class_index": 60,
+      "class_name": "vizsla"
+    },
+    {
+      "folder": "n02100735-English_setter",
+      "class_index": 61,
+      "class_name": "English setter"
+    },
+    {
+      "folder": "n02100877-Irish_setter",
+      "class_index": 62,
+      "class_name": "Irish setter"
+    },
+    {
+      "folder": "n02101006-Gordon_setter",
+      "class_index": 63,
+      "class_name": "Gordon setter"
+    },
+    {
+      "folder": "n02101388-Brittany_spaniel",
+      "class_index": 64,
+      "class_name": "Brittany spaniel"
+    },
+    {
+      "folder": "n02101556-clumber",
+      "class_index": 65,
+      "class_name": "clumber"
+    },
+    {
+      "folder": "n02102040-English_springer",
+      "class_index": 66,
+      "class_name": "English springer"
+    },
+    {
+      "folder": "n02102177-Welsh_springer_spaniel",
+      "class_index": 67,
+      "class_name": "Welsh springer spaniel"
+    },
+    {
+      "folder": "n02102318-cocker_spaniel",
+      "class_index": 68,
+      "class_name": "cocker spaniel"
+    },
+    {
+      "folder": "n02102480-Sussex_spaniel",
+      "class_index": 69,
+      "class_name": "Sussex spaniel"
+    },
+    {
+      "folder": "n02102973-Irish_water_spaniel",
+      "class_index": 70,
+      "class_name": "Irish water spaniel"
+    },
+    {
+      "folder": "n02104029-kuvasz",
+      "class_index": 71,
+      "class_name": "kuvasz"
+    },
+    {
+      "folder": "n02104365-schipperke",
+      "class_index": 72,
+      "class_name": "schipperke"
+    },
+    {
+      "folder": "n02105056-groenendael",
+      "class_index": 73,
+      "class_name": "groenendael"
+    },
+    {
+      "folder": "n02105162-malinois",
+      "class_index": 74,
+      "class_name": "malinois"
+    },
+    {
+      "folder": "n02105251-briard",
+      "class_index": 75,
+      "class_name": "briard"
+    },
+    {
+      "folder": "n02105412-kelpie",
+      "class_index": 76,
+      "class_name": "kelpie"
+    },
+    {
+      "folder": "n02105505-komondor",
+      "class_index": 77,
+      "class_name": "komondor"
+    },
+    {
+      "folder": "n02105641-Old_English_sheepdog",
+      "class_index": 78,
+      "class_name": "Old English sheepdog"
+    },
+    {
+      "folder": "n02105855-Shetland_sheepdog",
+      "class_index": 79,
+      "class_name": "Shetland sheepdog"
+    },
+    {
+      "folder": "n02106030-collie",
+      "class_index": 80,
+      "class_name": "collie"
+    },
+    {
+      "folder": "n02106166-Border_collie",
+      "class_index": 81,
+      "class_name": "Border collie"
+    },
+    {
+      "folder": "n02106382-Bouvier_des_Flandres",
+      "class_index": 82,
+      "class_name": "Bouvier des Flandres"
+    },
+    {
+      "folder": "n02106550-Rottweiler",
+      "class_index": 83,
+      "class_name": "Rottweiler"
+    },
+    {
+      "folder": "n02106662-German_shepherd",
+      "class_index": 84,
+      "class_name": "German shepherd"
+    },
+    {
+      "folder": "n02107142-Doberman",
+      "class_index": 85,
+      "class_name": "Doberman"
+    },
+    {
+      "folder": "n02107312-miniature_pinscher",
+      "class_index": 86,
+      "class_name": "miniature pinscher"
+    },
+    {
+      "folder": "n02107574-Greater_Swiss_Mountain_dog",
+      "class_index": 87,
+      "class_name": "Greater Swiss Mountain dog"
+    },
+    {
+      "folder": "n02107683-Bernese_mountain_dog",
+      "class_index": 88,
+      "class_name": "Bernese mountain dog"
+    },
+    {
+      "folder": "n02107908-Appenzeller",
+      "class_index": 89,
+      "class_name": "Appenzeller"
+    },
+    {
+      "folder": "n02108000-EntleBucher",
+      "class_index": 90,
+      "class_name": "EntleBucher"
+    },
+    {
+      "folder": "n02108089-boxer",
+      "class_index": 91,
+      "class_name": "boxer"
+    },
+    {
+      "folder": "n02108422-bull_mastiff",
+      "class_index": 92,
+      "class_name": "bull mastiff"
+    },
+    {
+      "folder": "n02108551-Tibetan_mastiff",
+      "class_index": 93,
+      "class_name": "Tibetan mastiff"
+    },
+    {
+      "folder": "n02108915-French_bulldog",
+      "class_index": 94,
+      "class_name": "French bulldog"
+    },
+    {
+      "folder": "n02109047-Great_Dane",
+      "class_index": 95,
+      "class_name": "Great Dane"
+    },
+    {
+      "folder": "n02109525-Saint_Bernard",
+      "class_index": 96,
+      "class_name": "Saint Bernard"
+    },
+    {
+      "folder": "n02109961-Eskimo_dog",
+      "class_index": 97,
+      "class_name": "Eskimo dog"
+    },
+    {
+      "folder": "n02110063-malamute",
+      "class_index": 98,
+      "class_name": "malamute"
+    },
+    {
+      "folder": "n02110185-Siberian_husky",
+      "class_index": 99,
+      "class_name": "Siberian husky"
+    },
+    {
+      "folder": "n02110627-affenpinscher",
+      "class_index": 100,
+      "class_name": "affenpinscher"
+    },
+    {
+      "folder": "n02110806-basenji",
+      "class_index": 101,
+      "class_name": "basenji"
+    },
+    {
+      "folder": "n02110958-pug",
+      "class_index": 102,
+      "class_name": "pug"
+    },
+    {
+      "folder": "n02111129-Leonberg",
+      "class_index": 103,
+      "class_name": "Leonberg"
+    },
+    {
+      "folder": "n02111277-Newfoundland",
+      "class_index": 104,
+      "class_name": "Newfoundland"
+    },
+    {
+      "folder": "n02111500-Great_Pyrenees",
+      "class_index": 105,
+      "class_name": "Great Pyrenees"
+    },
+    {
+      "folder": "n02111889-Samoyed",
+      "class_index": 106,
+      "class_name": "Samoyed"
+    },
+    {
+      "folder": "n02112018-Pomeranian",
+      "class_index": 107,
+      "class_name": "Pomeranian"
+    },
+    {
+      "folder": "n02112137-chow",
+      "class_index": 108,
+      "class_name": "chow"
+    },
+    {
+      "folder": "n02112350-keeshond",
+      "class_index": 109,
+      "class_name": "keeshond"
+    },
+    {
+      "folder": "n02112706-Brabancon_griffon",
+      "class_index": 110,
+      "class_name": "Brabancon griffon"
+    },
+    {
+      "folder": "n02113023-Pembroke",
+      "class_index": 111,
+      "class_name": "Pembroke"
+    },
+    {
+      "folder": "n02113186-Cardigan",
+      "class_index": 112,
+      "class_name": "Cardigan"
+    },
+    {
+      "folder": "n02113624-toy_poodle",
+      "class_index": 113,
+      "class_name": "toy poodle"
+    },
+    {
+      "folder": "n02113712-miniature_poodle",
+      "class_index": 114,
+      "class_name": "miniature poodle"
+    },
+    {
+      "folder": "n02113799-standard_poodle",
+      "class_index": 115,
+      "class_name": "standard poodle"
+    },
+    {
+      "folder": "n02113978-Mexican_hairless",
+      "class_index": 116,
+      "class_name": "Mexican hairless"
+    },
+    {
+      "folder": "n02115641-dingo",
+      "class_index": 117,
+      "class_name": "dingo"
+    },
+    {
+      "folder": "n02115913-dhole",
+      "class_index": 118,
+      "class_name": "dhole"
+    },
+    {
+      "folder": "n02116738-African_hunting_dog",
+      "class_index": 119,
+      "class_name": "African hunting dog"
+    }
+  ]
+}

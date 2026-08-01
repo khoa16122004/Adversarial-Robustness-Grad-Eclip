@@ -1,6 +1,7 @@
 import time
 import json
 import os
+from pathlib import Path
 import torch
 import torch.nn as nn
 import Game_MM_CLIP.clip as mm_clip
@@ -16,6 +17,74 @@ from imagenet_metadata import IMAGENET_CLASSNAMES, OPENAI_IMAGENET_TEMPLATES
 
 
 _EXPLAINER_CACHE = {}
+DEFAULT_PROMPT_TEMPLATE = "a photo of {}"
+
+
+def load_classnames(classnames_path=None):
+    """Load class names from txt/json file, fallback to ImageNet class names."""
+    if classnames_path is None:
+        return list(IMAGENET_CLASSNAMES)
+
+    path = Path(classnames_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Class names file not found: {path}")
+
+    suffix = path.suffix.lower()
+    if suffix == ".txt":
+        classnames = []
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                name = line.strip()
+                if name:
+                    classnames.append(name)
+        if not classnames:
+            raise ValueError(f"No class names found in txt file: {path}")
+        return classnames
+
+    if suffix == ".json":
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        if isinstance(data, list):
+            classnames = [str(x).strip() for x in data if str(x).strip()]
+            if not classnames:
+                raise ValueError(f"No class names found in json list: {path}")
+            return classnames
+
+        if isinstance(data, dict):
+            keys = list(data.keys())
+
+            def _value_to_name(value):
+                if isinstance(value, str):
+                    return value.strip()
+                if isinstance(value, list) and len(value) > 0:
+                    if len(value) >= 2 and isinstance(value[1], str):
+                        return value[1].strip()
+                    if isinstance(value[0], str):
+                        return value[0].strip()
+                return None
+
+            if keys and all(str(k).isdigit() for k in keys):
+                sorted_items = sorted(data.items(), key=lambda kv: int(kv[0]))
+                classnames = []
+                for _, value in sorted_items:
+                    name = _value_to_name(value)
+                    if name:
+                        classnames.append(name)
+                if classnames:
+                    return classnames
+
+            classnames = []
+            for _, value in data.items():
+                name = _value_to_name(value)
+                if name:
+                    classnames.append(name)
+            if classnames:
+                return classnames
+
+        raise ValueError(f"Unsupported json format for class names: {path}")
+
+    raise ValueError(f"Unsupported class names file extension: {path.suffix}")
 
 
 class ZeroShotClipClassifier(nn.Module):
@@ -41,11 +110,25 @@ class SoftmaxModel(nn.Module):
         return self.softmax(self.model(inputs))
 
 
-def build_zero_shot_clip_classifier(clip_model, device, num_classes_per_batch=10, use_tqdm=True):
+def build_zero_shot_clip_classifier(
+    clip_model,
+    device,
+    classnames=None,
+    prompt_template=DEFAULT_PROMPT_TEMPLATE,
+    templates=None,
+    num_classes_per_batch=10,
+    use_tqdm=True,
+):
+    if classnames is None:
+        classnames = IMAGENET_CLASSNAMES
+
+    if templates is None:
+        templates = (prompt_template,)
+
     zero_shot_weights = build_zero_shot_classifier(
         clip_model,
-        classnames=IMAGENET_CLASSNAMES,
-        templates=OPENAI_IMAGENET_TEMPLATES,
+        classnames=classnames,
+        templates=templates,
         num_classes_per_batch=num_classes_per_batch,
         device=device,
         use_tqdm=use_tqdm,
@@ -198,34 +281,132 @@ def save_causal_metric_summary(image_tensor, final_tensor, scores, output_path, 
     plt.close()
 
 def load_imagenet_label_map(index_json):
+    folder_to_label, _ = load_dataset_label_map(index_json)
+    return folder_to_label
+
+
+def _normalize_label_entry(entry, default_folder=None):
+    if isinstance(entry, dict):
+        folder = (
+            entry.get("folder")
+            or entry.get("folder_name")
+            or entry.get("wnid")
+            or entry.get("id")
+            or default_folder
+        )
+        label = entry.get("label")
+        if label is None:
+            label = entry.get("class_index")
+        if label is None:
+            label = entry.get("target")
+        class_name = (
+            entry.get("class_name")
+            or entry.get("classname")
+            or entry.get("name")
+            or entry.get("class")
+        )
+        if folder is None or label is None:
+            return None
+        return str(folder), int(label), (str(class_name) if class_name is not None else None)
+
+    if isinstance(entry, list):
+        # [label, class_name] when key is folder OR [folder, label, class_name]
+        if default_folder is not None and len(entry) >= 1:
+            label = entry[0]
+            class_name = entry[1] if len(entry) >= 2 else None
+            return str(default_folder), int(label), (str(class_name) if class_name is not None else None)
+        if len(entry) >= 2:
+            folder = entry[0]
+            label = entry[1]
+            class_name = entry[2] if len(entry) >= 3 else None
+            return str(folder), int(label), (str(class_name) if class_name is not None else None)
+
+    if isinstance(entry, int) and default_folder is not None:
+        return str(default_folder), int(entry), None
+
+    return None
+
+
+def load_dataset_label_map(index_json):
     with open(index_json, "r", encoding="utf-8") as f:
         class_dict = json.load(f)
 
-    if not isinstance(class_dict, dict) or len(class_dict) == 0:
+    if not isinstance(class_dict, (dict, list)) or len(class_dict) == 0:
         raise ValueError(f"Invalid label json format: {index_json}")
 
-    sample_key = next(iter(class_dict.keys()))
     folder_to_label = {}
+    label_to_classname = {}
 
-    if str(sample_key).isdigit():
-        # Format: {"0": ["n01440764", "tench"], ...}
-        for label_str, values in class_dict.items():
-            if not isinstance(values, list) or len(values) < 1:
+    if isinstance(class_dict, dict):
+        sample_key = next(iter(class_dict.keys()))
+
+        if str(sample_key).isdigit():
+            # Format: {"0": ["n01440764", "tench"], ...}
+            for label_str, values in class_dict.items():
+                if not isinstance(values, list) or len(values) < 1:
+                    continue
+                folder = str(values[0])
+                label = int(label_str)
+                class_name = str(values[1]) if len(values) >= 2 else None
+                folder_to_label[folder] = label
+                if class_name:
+                    label_to_classname[label] = class_name
+            return folder_to_label, label_to_classname
+
+        # Generic dict formats
+        # 1) {"n01440764": [0, "tench"], ...}
+        # 2) {"n01440764": {"label":0, "class_name":"tench"}, ...}
+        # 3) {"items": [{"folder":"...","label":0,"class_name":"..."}, ...]}
+        if "items" in class_dict and isinstance(class_dict["items"], list):
+            entries = class_dict["items"]
+            for entry in entries:
+                parsed = _normalize_label_entry(entry)
+                if parsed is None:
+                    continue
+                folder, label, class_name = parsed
+                folder_to_label[folder] = label
+                if class_name:
+                    label_to_classname[label] = class_name
+            if folder_to_label:
+                return folder_to_label, label_to_classname
+
+        for folder_key, values in class_dict.items():
+            parsed = _normalize_label_entry(values, default_folder=folder_key)
+            if parsed is None:
                 continue
-            folder_to_label[str(values[0])] = int(label_str)
-        return folder_to_label
+            folder, label, class_name = parsed
+            folder_to_label[folder] = label
+            if class_name:
+                label_to_classname[label] = class_name
+        if folder_to_label:
+            return folder_to_label, label_to_classname
 
-    # Format: {"n01440764": [0, "tench"], ...}
-    for wnid, values in class_dict.items():
-        if isinstance(values, list) and len(values) > 0:
-            folder_to_label[str(wnid)] = int(values[0])
-        elif isinstance(values, int):
-            folder_to_label[str(wnid)] = int(values)
+    if isinstance(class_dict, list):
+        # Generic list format: [{"folder":"...","label":0,"class_name":"..."}, ...]
+        for entry in class_dict:
+            parsed = _normalize_label_entry(entry)
+            if parsed is None:
+                continue
+            folder, label, class_name = parsed
+            folder_to_label[folder] = label
+            if class_name:
+                label_to_classname[label] = class_name
+        if folder_to_label:
+            return folder_to_label, label_to_classname
 
-    if not folder_to_label:
-        raise ValueError(f"Could not parse label mapping from: {index_json}")
+    raise ValueError(f"Could not parse label mapping from: {index_json}")
 
-    return folder_to_label
+
+def build_classnames_from_label_map(label_to_classname):
+    if not label_to_classname:
+        return []
+    max_label = max(label_to_classname.keys())
+    classnames = []
+    for label in range(max_label + 1):
+        if label not in label_to_classname:
+            return []
+        classnames.append(label_to_classname[label])
+    return classnames
 
 
 def collect_image_items(data_path, folder_to_label, max_images=None):

@@ -166,3 +166,4 @@ cython_debug/
 *.pth
 .nfs*
 select_one_per_class.py
+standford_dogdataaset

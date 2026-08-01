@@ -11,16 +11,29 @@ from PIL import Image
 from tqdm import tqdm
 
 from clip_utils import build_zero_shot_classifier
-from imagenet_metadata import IMAGENET_CLASSNAMES, OPENAI_IMAGENET_TEMPLATES
-from util import batched, collect_image_items, load_imagenet_label_map
+from util import (
+    DEFAULT_PROMPT_TEMPLATE,
+    batched,
+    build_classnames_from_label_map,
+    collect_image_items,
+    load_dataset_label_map,
+    load_classnames,
+)
 
 
 def main():
     parser = argparse.ArgumentParser(
         description="Classify ImageNet-style samples with CLIP zero-shot and save correct samples to JSON"
     )
-    parser.add_argument("--data-path", required=True, help="Path to ImageNet-style val folder (wnid subfolders)")
-    parser.add_argument("--index-json", default="imgnet1k_label.json", help="Path to ImageNet class index json")
+    parser.add_argument("--data-path", required=True, help="Path to dataset folder (class subfolders)")
+    parser.add_argument(
+        "--index-json",
+        default="imgnet1k_label.json",
+        help=(
+            "Path to label mapping json. Supports ImageNet style and generic formats with "
+            "folder/class_index/class_name"
+        ),
+    )
     parser.add_argument("--clip-model", default="ViT-B/16", help="CLIP model name for clip.load")
     parser.add_argument(
         "--clip-checkpoint",
@@ -29,6 +42,16 @@ def main():
     )
     parser.add_argument("--max-images", type=int, default=None, help="Optional cap on number of images")
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size for CLIP image inference")
+    parser.add_argument(
+        "--classnames-path",
+        default=None,
+        help="Optional path to class names (.txt or .json). Default: ImageNet class names",
+    )
+    parser.add_argument(
+        "--prompt-template",
+        default=DEFAULT_PROMPT_TEMPLATE,
+        help="Prompt template for zero-shot text, use {} as class placeholder",
+    )
     parser.add_argument(
         "--output",
         default="D:/Adversarial-Robustness-Grad-Eclip/densenet121.json",
@@ -46,18 +69,34 @@ def main():
     if args.clip_checkpoint and not os.path.isfile(args.clip_checkpoint):
         raise FileNotFoundError(f"--clip-checkpoint not found: {args.clip_checkpoint}")
 
-    folder_to_label = load_imagenet_label_map(args.index_json)
+    folder_to_label, label_to_classname = load_dataset_label_map(args.index_json)
     image_items = collect_image_items(args.data_path, folder_to_label, max_images=args.max_images)
     if not image_items:
         raise ValueError("No image found for classification.")
+
+    if args.classnames_path:
+        classnames = load_classnames(args.classnames_path)
+    else:
+        classnames = build_classnames_from_label_map(label_to_classname)
+        if not classnames:
+            raise ValueError(
+                "Cannot infer class names from --index-json. "
+                "Please provide --classnames-path or include class_name in mapping json."
+            )
+
+    max_gt_label = max(folder_to_label.values())
+    if max_gt_label >= len(classnames):
+        raise ValueError(
+            f"Class-name count ({len(classnames)}) is smaller than max label index ({max_gt_label})."
+        )
 
     clip_model, preprocess = clip.load(clip_source, device=device)
     clip_model.eval()
 
     zero_shot_weights = build_zero_shot_classifier(
         clip_model,
-        classnames=IMAGENET_CLASSNAMES,
-        templates=OPENAI_IMAGENET_TEMPLATES,
+        classnames=classnames,
+        templates=(args.prompt_template,),
         num_classes_per_batch=10,
         device=device,
         use_tqdm=True,
@@ -108,6 +147,7 @@ def main():
         "device": device,
         "data_path": args.data_path,
         "index_json": args.index_json,
+        "num_classes": len(classnames),
         "max_images": args.max_images,
         "batch_size": args.batch_size,
         "num_total_processed": num_total,

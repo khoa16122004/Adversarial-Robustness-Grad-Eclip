@@ -12,12 +12,13 @@ from PIL import Image
 from torchvision.transforms import Resize
 from torchvision.utils import save_image
 
-from imagenet_metadata import IMAGENET_CLASSNAMES
 from util import (
+    DEFAULT_PROMPT_TEMPLATE,
     build_blur_substrate,
     build_causal_metric_model,
     build_zero_shot_clip_classifier,
     generate_hm,
+    load_classnames,
     normalize_ImageNet1k,
     normalize_ImageNet1k,
     predict_zero_shot_clip,
@@ -60,6 +61,16 @@ def parse_args():
     parser.add_argument("--output-json", default="test_eval_result.json", help="Where to save numeric results as JSON")
     parser.add_argument("--output-txt", default="test_eval_result.txt", help="Where to save a short text summary")
     parser.add_argument("--output-dir", default="test_eval_outputs", help="Where to save generated images")
+    parser.add_argument(
+        "--classnames-path",
+        default=None,
+        help="Optional path to class names (.txt or .json). Default: ImageNet class names",
+    )
+    parser.add_argument(
+        "--prompt-template",
+        default=DEFAULT_PROMPT_TEMPLATE,
+        help="Prompt template for zero-shot text, use {} as class placeholder",
+    )
     parser.add_argument("--save-process", action="store_true", help="Save every deletion/insertion step image")
     parser.add_argument("--eps", type=float, default=32.0, help="Maximum perturbation for adversarial attack (in pixel values)")
     parser.add_argument("--alpha", type=float, default=8.0, help="Step size for adversarial attack (in pixel values)")
@@ -75,13 +86,13 @@ def parse_args():
     return parser.parse_args()
 
 
-def resolve_target_label(args, pred_label):
+def resolve_target_label(args, pred_label, num_classes):
     if args.target_source == "pred":
         return pred_label
     if args.gt_label is None:
         raise ValueError("--gt-label is required when --target-source gt")
-    if not (0 <= args.gt_label < len(IMAGENET_CLASSNAMES)):
-        raise ValueError("--gt-label must be a valid ImageNet class index")
+    if not (0 <= args.gt_label < num_classes):
+        raise ValueError("--gt-label must be a valid class index for the loaded class names")
     return int(args.gt_label)
 
 
@@ -122,6 +133,7 @@ def main():
     args = parse_args()
     blur_fn = build_blur_substrate(args.kernel_size, args.kernel_sigma) # function for insertion
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    classnames = load_classnames(args.classnames_path)
 
     clip_source = args.clip_checkpoint or args.clip_model
     if args.clip_checkpoint and not os.path.isfile(args.clip_checkpoint):
@@ -133,6 +145,8 @@ def main():
     classifier, _ = build_zero_shot_clip_classifier(
         clip_model,
         device=device,
+        classnames=classnames,
+        prompt_template=args.prompt_template,
         num_classes_per_batch=10,
         use_tqdm=True,
     )
@@ -147,8 +161,8 @@ def main():
 
     _, _, pred_label, pred_confidence = predict_zero_shot_clip(classifier, image_normalized, device)
 
-    target_label = resolve_target_label(args, pred_label)
-    target_texts = [IMAGENET_CLASSNAMES[target_label]]
+    target_label = resolve_target_label(args, pred_label, len(classnames))
+    target_texts = [classnames[target_label]]
 
     with torch.no_grad():
         text_tokens = clip.tokenize(target_texts).to(device)
@@ -248,7 +262,7 @@ def main():
         scores=curve,
         output_path=os.path.join(args.output_dir, f"{args.mode}_summary.png"),
         mode=args.mode,
-        class_name=IMAGENET_CLASSNAMES[pred_label],
+        class_name=classnames[pred_label],
         preprocess=preprocess,
     )
     
