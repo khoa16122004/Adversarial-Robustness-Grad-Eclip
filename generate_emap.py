@@ -19,6 +19,8 @@ from skimage.transform import resize as np_resize
 
 import Game_MM_CLIP.clip as mm_clip
 import CLIP_Surgery.clip as surgery_clip
+from Game_MM_CLIP.clip.model import build_model as build_mm_model
+from CLIP_Surgery.clip.build_model import build_model as build_surgery_model
 
 from M2IB.scripts.clip_wrapper import ClipWrapper
 from M2IB.scripts.methods import vision_heatmap_iba, text_heatmap_iba
@@ -455,22 +457,27 @@ class CLIPExplainRunner:
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.clip_model_name = clip_model_name
 
-        self.mm_clipmodel, _ = mm_clip.load(self.clip_model_name, device=self.device, jit=False)
-        self.surgery_model, _ = surgery_clip.load(f"CS-{self.clip_model_name}", device=self.device)
+        self.mm_clipmodel = None
+        self.surgery_model = None
         self.clip_tokenizer = None
         self.m2ib_model = ClipWrapper(self.clipmodel)
-        self._sync_aux_models_from_clip()
 
     def _get_clip_tokenizer(self):
         if self.clip_tokenizer is None:
             self.clip_tokenizer = _load_clip_tokenizer_local_only()
         return self.clip_tokenizer
 
-    def _sync_aux_models_from_clip(self):
-        # Keep auxiliary explainers aligned with the base CLIP weights when possible.
-        base_state_dict = self.clipmodel.state_dict()
-        self.mm_clipmodel.load_state_dict(base_state_dict, strict=False)
-        self.surgery_model.load_state_dict(base_state_dict, strict=False)
+    def _ensure_mm_clipmodel(self):
+        if self.mm_clipmodel is None:
+            base_state_dict = self.clipmodel.state_dict()
+            self.mm_clipmodel = build_mm_model(base_state_dict).to(self.device)
+            self.mm_clipmodel.eval()
+
+    def _ensure_surgery_model(self):
+        if self.surgery_model is None:
+            base_state_dict = self.clipmodel.state_dict()
+            self.surgery_model = build_surgery_model(f"CS-{self.clip_model_name}", base_state_dict).to(self.device)
+            self.surgery_model.eval()
 
     def generate_hm(self, hm_type, img, txt_embedding, txts, resize):
         start = time.time()
@@ -499,6 +506,7 @@ class CLIPExplainRunner:
             emap = torch.stack(emap, dim=0).sum(0)
         elif "game" in hm_type:
             start = time.time()
+            self._ensure_mm_clipmodel()
             img_clipreprocess = self.preprocess(img).to(self.device).unsqueeze(0)
             text_tokenized = mm_clip.tokenize(txts).to(self.device)
             emap = mm_interpret(
@@ -510,6 +518,7 @@ class CLIPExplainRunner:
             emap = emap.sum(0)
         elif "rollout" in hm_type:
             start = time.time()
+            self._ensure_mm_clipmodel()
             img_clipreprocess = self.preprocess(img).to(self.device).unsqueeze(0)
             text_tokenized = mm_clip.tokenize(txts).to(self.device)
             attentions = mm_interpret(
@@ -522,6 +531,7 @@ class CLIPExplainRunner:
             emap = compute_rollout_attention(attentions)[0]
         elif "surgery" in hm_type:
             start = time.time()
+            self._ensure_surgery_model()
             img_clipreprocess = self.preprocess(img).to(self.device).unsqueeze(0)
             all_texts = [
                 'airplane', 'bag', 'bed', 'bedclothes', 'bench', 'bicycle', 'bird', 'boat', 'book', 'bottle',
