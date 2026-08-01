@@ -1,9 +1,17 @@
 import gzip
 import html
 import os
+import sys
 from functools import lru_cache
 
-import ftfy
+try:
+    import ftfy
+except ImportError:
+    # Fallback to vendored ftfy package under CLIP/clip/ftfy for offline use.
+    _clip_dir = os.path.dirname(os.path.abspath(__file__))
+    if _clip_dir not in sys.path:
+        sys.path.insert(0, _clip_dir)
+    import ftfy
 import regex as re
 
 
