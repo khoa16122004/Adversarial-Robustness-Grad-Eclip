@@ -97,11 +97,16 @@ def rise(model, image, txt_embedding, device, N=2000, s=8, p1=0.5):
     masks = generate_masks(input_size, N, s, p1)
     batch_size = 50
     preds = []
-    # Make sure multiplication is being done for correct axes
-    masked = image * masks
+    txt_embedding = txt_embedding.to(device)
+    image = image.to(device)
+
     with torch.no_grad():
         for i in tqdm(range(0, N, batch_size), desc='Explaining'):
-            image_features = model.encode_image(masked[i:min(i+batch_size, N)].to(device))
+            end = min(i + batch_size, N)
+            mask_batch = masks[i:end].to(device)
+            masked_batch = image * mask_batch
+
+            image_features = model.encode_image(masked_batch)
             image_features = F.normalize(image_features, dim=-1)
             preds.append((image_features @ txt_embedding.T).cpu())
             del image_features
