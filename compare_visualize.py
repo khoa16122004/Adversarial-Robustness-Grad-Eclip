@@ -2,7 +2,10 @@ from util import visualize
 from generate_emap import CLIPExplainRunner
 from PIL import Image, ImageDraw, ImageFont
 from torchvision.transforms import Resize
-import clip
+try:
+	from CLIP import clip
+except ImportError:
+	import clip
 import torch.nn.functional as F
 
 clipmodel, preprocess = clip.load("ViT-B/16", device='cuda')

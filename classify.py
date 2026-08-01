@@ -2,7 +2,10 @@ import argparse
 import json
 import os
 
-import clip
+try:
+    from CLIP import clip
+except ImportError:
+    import clip
 import torch
 from PIL import Image
 from tqdm import tqdm
@@ -19,6 +22,11 @@ def main():
     parser.add_argument("--data-path", required=True, help="Path to ImageNet-style val folder (wnid subfolders)")
     parser.add_argument("--index-json", default="imgnet1k_label.json", help="Path to ImageNet class index json")
     parser.add_argument("--clip-model", default="ViT-B/16", help="CLIP model name for clip.load")
+    parser.add_argument(
+        "--clip-checkpoint",
+        default=None,
+        help="Optional local checkpoint path passed to clip.load instead of --clip-model",
+    )
     parser.add_argument("--max-images", type=int, default=None, help="Optional cap on number of images")
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size for CLIP image inference")
     parser.add_argument(
@@ -34,12 +42,16 @@ def main():
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
 
+    clip_source = args.clip_checkpoint or args.clip_model
+    if args.clip_checkpoint and not os.path.isfile(args.clip_checkpoint):
+        raise FileNotFoundError(f"--clip-checkpoint not found: {args.clip_checkpoint}")
+
     folder_to_label = load_imagenet_label_map(args.index_json)
     image_items = collect_image_items(args.data_path, folder_to_label, max_images=args.max_images)
     if not image_items:
         raise ValueError("No image found for classification.")
 
-    clip_model, preprocess = clip.load(args.clip_model, device=device)
+    clip_model, preprocess = clip.load(clip_source, device=device)
     clip_model.eval()
 
     zero_shot_weights = build_zero_shot_classifier(

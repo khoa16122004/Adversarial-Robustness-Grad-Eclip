@@ -2,10 +2,14 @@ import os
 import time
 import cv2
 import math
-import clip
+try:
+    from CLIP import clip
+    from CLIP.clip import tokenize
+except ImportError:
+    import clip
+    from clip import tokenize
 import json
 import numpy as np
-from clip import tokenize
 import torch
 from PIL import Image
 import torchvision.transforms as T
@@ -39,19 +43,23 @@ def imgprocess_keepsize(img, patch_size=[16, 16], scale_factor=1):
 
 # CLIP
 device = "cuda" if torch.cuda.is_available() else "cpu"
-clipmodel, preprocess = clip.load("ViT-B/16", device=device)
-mm_clipmodel, _ = mm_clip.load("ViT-B/16", device=device, jit=False)
-surgery_model, _ = surgery_clip.load("CS-ViT-B/16", device=device)
+clipmodel = None
+preprocess = None
+mm_clipmodel = None
+surgery_model = None
+clip_tokenizer = None
+m2ib_model = None
 
-# clipmodel, preprocess = clip.load("ViT-B/32", device=device)
-# mm_clipmodel, _ = mm_clip.load("ViT-B/32", device=device, jit=False)
-# surgery_model, _ = surgery_clip.load("CS-ViT-B/32", device=device)
-# clipmodel.load_state_dict(torch.load("clip-imp-pretrained_128_6_after_4.pt", map_location=device))
-# mm_clipmodel.load_state_dict(torch.load("clip-imp-pretrained_128_6_after_4.pt", map_location=device))
-# surgery_model.load_state_dict(torch.load("clip-imp-pretrained_128_6_after_4.pt", map_location=device))
 
-clip_tokenizer = CLIPTokenizerFast.from_pretrained("openai/clip-vit-base-patch16")
-m2ib_model = ClipWrapper(clipmodel)
+def _load_clip_tokenizer_local_only():
+    return CLIPTokenizerFast.from_pretrained("openai/clip-vit-base-patch16", local_files_only=True)
+
+
+def _get_global_clip_tokenizer():
+    global clip_tokenizer
+    if clip_tokenizer is None:
+        clip_tokenizer = _load_clip_tokenizer_local_only()
+    return clip_tokenizer
 
 def accuracy(output, target, topk=(1,)):
     pred = output.topk(max(topk), 1, True, True)[1].t()
@@ -104,7 +112,7 @@ def rise(model, image, txt_embedding, device, N=2000, s=8, p1=0.5):
 ### M2IB
 def m2ib_clip_map(model, image, texts, device, tokenizer=None, vbeta=0.1, vvar=1, vlayer=9, tbeta=0.1, tvar=1, tlayer=9):
     if tokenizer is None:
-        tokenizer = clip_tokenizer
+        tokenizer = _get_global_clip_tokenizer()
     text_input = texts[0] if isinstance(texts, list) else texts
     text_ids = torch.tensor([tokenizer.encode(text_input, add_special_tokens=True)]).to(device)
     vmap = vision_heatmap_iba(text_ids, image, model, vlayer, vbeta, vvar)
@@ -112,7 +120,7 @@ def m2ib_clip_map(model, image, texts, device, tokenizer=None, vbeta=0.1, vvar=1
 
 def m2ib_clip_text_map(model, image, texts, device, tokenizer=None, vbeta=0.1, vvar=1, vlayer=9, tbeta=0.1, tvar=1, tlayer=9):
     if tokenizer is None:
-        tokenizer = clip_tokenizer
+        tokenizer = _get_global_clip_tokenizer()
     text_input = texts[0] if isinstance(texts, list) else texts
     text_ids = torch.tensor([tokenizer.encode(text_input, add_special_tokens=True)]).to(device)
     tmap = text_heatmap_iba(text_ids, image, model, tlayer, tbeta, tvar)
@@ -449,9 +457,14 @@ class CLIPExplainRunner:
 
         self.mm_clipmodel, _ = mm_clip.load(self.clip_model_name, device=self.device, jit=False)
         self.surgery_model, _ = surgery_clip.load(f"CS-{self.clip_model_name}", device=self.device)
-        self.clip_tokenizer = CLIPTokenizerFast.from_pretrained("openai/clip-vit-base-patch16")
+        self.clip_tokenizer = None
         self.m2ib_model = ClipWrapper(self.clipmodel)
         self._sync_aux_models_from_clip()
+
+    def _get_clip_tokenizer(self):
+        if self.clip_tokenizer is None:
+            self.clip_tokenizer = _load_clip_tokenizer_local_only()
+        return self.clip_tokenizer
 
     def _sync_aux_models_from_clip(self):
         # Keep auxiliary explainers aligned with the base CLIP weights when possible.
@@ -533,7 +546,7 @@ class CLIPExplainRunner:
                 image=img_clipreprocess,
                 texts=txts,
                 device=self.device,
-                tokenizer=self.clip_tokenizer,
+                tokenizer=self._get_clip_tokenizer(),
             )
             emap = torch.tensor(emap)
         elif "rise" in hm_type:

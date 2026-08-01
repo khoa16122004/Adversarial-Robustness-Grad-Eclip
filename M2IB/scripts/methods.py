@@ -4,7 +4,10 @@ Based on code of https://github.com/bazingagin/IBA, https://github.com/Bioroboti
 
 from .iba import IBAInterpreter, Estimator
 import numpy as np
-import clip
+try:
+    from CLIP import clip
+except ImportError:
+    import clip
 import copy
 import torch 
 from transformers import CLIPProcessor, CLIPModel, CLIPTokenizerFast

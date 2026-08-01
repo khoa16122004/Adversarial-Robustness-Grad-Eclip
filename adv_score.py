@@ -2,7 +2,10 @@ import argparse
 import json
 import os
 from tqdm import tqdm
-import clip
+try:
+    from CLIP import clip
+except ImportError:
+    import clip
 import torch
 import torch.nn.functional as F
 from PIL import Image
@@ -29,6 +32,11 @@ def parse_args():
         description="Prototype deletion/insertion evaluation for CLIP zero-shot explanations"
     )
     parser.add_argument("--clip-model", default="ViT-B/16", help="CLIP model name")
+    parser.add_argument(
+        "--clip-checkpoint",
+        default=None,
+        help="Optional local checkpoint path passed to clip.load instead of --clip-model",
+    )
     parser.add_argument(
         "--hm-type",
         default="eclip",
@@ -111,7 +119,11 @@ def main():
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     blur_fn = build_blur_substrate(args.kernel_size, args.kernel_sigma) # function for insertion
 
-    clip_model, preprocess = clip.load(args.clip_model, device=device)
+    clip_source = args.clip_checkpoint or args.clip_model
+    if args.clip_checkpoint and not os.path.isfile(args.clip_checkpoint):
+        raise FileNotFoundError(f"--clip-checkpoint not found: {args.clip_checkpoint}")
+
+    clip_model, preprocess = clip.load(clip_source, device=device)
     clip_model.eval()
 
     classifier, _ = build_zero_shot_clip_classifier(

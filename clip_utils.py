@@ -7,7 +7,10 @@ from itertools import islice
 from typing import Callable, List, Optional, Sequence, Union
 from imagenet_metadata import IMAGENET_CLASSNAMES, OPENAI_IMAGENET_TEMPLATES
 
-from clip import tokenize
+try:
+    from CLIP.clip import tokenize
+except ImportError:
+    from clip import tokenize
 
 def preprocess(image_size, 
         mean=(0.48145466, 0.4578275, 0.40821073), 
