@@ -181,6 +181,8 @@ class AdversarialCausalMetric(CausalMetric):
                    alpha=4.0 / 255.0,
                    pgd_steps=100,
                    deletion_steps=100,
+                   process_batch_size=32,
+                   deletion_batch_size=None,
                    clip_min=0.0,
                    clip_max=1.0,
                    return_details=True,
@@ -195,6 +197,8 @@ class AdversarialCausalMetric(CausalMetric):
             alpha (float): PGD step size.
             pgd_steps (int): number of PGD iterations.
             deletion_steps (int): number of deletion iterations T.
+            process_batch_size (int): number of process states evaluated per forward pass for both del/ins modes.
+            deletion_batch_size (int, optional): deprecated alias of process_batch_size.
             margin (float): hinge margin m in deletion loss.
             lambda_del (float): weight for deletion loss.
             clip_min (float): minimum value for clamped normalized image.
@@ -231,6 +235,9 @@ class AdversarialCausalMetric(CausalMetric):
             'pgd_trace': [],
         }
 
+        if deletion_batch_size is not None:
+            process_batch_size = deletion_batch_size
+
         for k in range(pgd_steps):
             x_raw_adv = torch.clamp(x_raw + delta, clip_min, clip_max)
             x_adv_normalzie = normalize_ImageNet1k(x_raw_adv)
@@ -263,15 +270,11 @@ class AdversarialCausalMetric(CausalMetric):
             else:
                 raise ValueError("mode must be 'del' or 'ins'")
             finish_flat = finish.view(1, 3, HW)
-            l_del = torch.zeros(1, device=device)
-            p_t_trace = []
+            xt_states = []
 
 
             for t in range(deletion_steps):
-                logits_t = self.model(normalize_ImageNet1k(xt))
-                p_t = logits_t[:, target_class]
-                l_del = l_del + p_t # aggregation
-                p_t_trace.append(float(p_t.item()))
+                xt_states.append(xt.clone())
 
                 start_idx = self.step * t
                 end_idx = min(HW, self.step * (t + 1))
@@ -288,6 +291,19 @@ class AdversarialCausalMetric(CausalMetric):
                 xt_next_flat = xt_next.view(1, 3, HW)
                 xt_next_flat[0, :, coords] = finish_flat[0, :, coords]
                 xt = xt_next
+
+            if process_batch_size is None or process_batch_size < 1:
+                process_batch_size = len(xt_states)
+
+            l_del = torch.zeros(1, device=device)
+            p_t_trace = []
+            for start_idx in range(0, len(xt_states), process_batch_size):
+                end_idx = min(len(xt_states), start_idx + process_batch_size)
+                xt_batch = torch.cat(xt_states[start_idx:end_idx], dim=0)
+                logits_batch = self.model(normalize_ImageNet1k(xt_batch))
+                p_t_batch = logits_batch[:, target_class]
+                l_del = l_del + p_t_batch.sum() # aggregation
+                p_t_trace.extend([float(v) for v in p_t_batch.detach().cpu().tolist()])
 
             logits_last = self.model(normalize_ImageNet1k(xt)) # last logitss
             l_del += logits_last[:, target_class]

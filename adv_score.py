@@ -61,6 +61,14 @@ def parse_args():
     parser.add_argument("--eps", type=float, default=32.0, help="Maximum perturbation for adversarial attack (in pixel values)")
     parser.add_argument("--alpha", type=float, default=8.0, help="Step size for adversarial attack (in pixel values)")
     parser.add_argument("--pgd-steps", type=int, default=50, help="Number of PGD steps for adversarial attack")
+    parser.add_argument(
+        "--process-batch-size",
+        "--deletion-batch-size",
+        dest="process_batch_size",
+        type=int,
+        default=32,
+        help="Number of process states evaluated per forward pass in each PGD iteration for both del/ins",
+    )
     parser.add_argument("--mode", default="del", choices=["del", "ins"], help="Causal metric mode: deletion or insertion")
     parser.add_argument(
         "--verbose",
@@ -191,6 +199,7 @@ def main():
             eps=args.eps / 255.0,
             alpha=args.alpha / 255.0, 
             pgd_steps=args.pgd_steps,
+            process_batch_size=args.process_batch_size,
         )
         x_adv = x_adv.detach().cpu()    
         save_image(x_adv, os.path.join(sample_dir, f"adversarial_image_{args.mode}.png"))
