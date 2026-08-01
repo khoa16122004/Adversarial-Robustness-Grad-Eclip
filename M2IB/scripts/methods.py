@@ -2,7 +2,7 @@
 Based on code of https://github.com/bazingagin/IBA, https://github.com/BioroboticsLab/IBA
 """
 
-from scripts.iba import IBAInterpreter, Estimator
+from .iba import IBAInterpreter, Estimator
 import numpy as np
 import clip
 import copy
