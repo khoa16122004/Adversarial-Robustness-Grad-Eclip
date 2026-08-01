@@ -480,7 +480,7 @@ class CLIPExplainRunner:
             self.surgery_model.eval()
 
     def generate_hm(self, hm_type, img, txt_embedding, txts, resize):
-        start = time.time()
+        # start = time.time()
         # img_keepsized = imgprocess_keepsize(img).to(self.device).unsqueeze(0)
         img_keepsized = img.clone().to(self.device)
         outputs, v_final, last_input, v, q_out, k_out, \
@@ -505,7 +505,7 @@ class CLIPExplainRunner:
             ]
             emap = torch.stack(emap, dim=0).sum(0)
         elif "game" in hm_type:
-            start = time.time()
+            # start = time.time()
             self._ensure_mm_clipmodel()
             img_clipreprocess = self.preprocess(img).to(self.device).unsqueeze(0)
             text_tokenized = mm_clip.tokenize(txts).to(self.device)
@@ -517,7 +517,7 @@ class CLIPExplainRunner:
             )
             emap = emap.sum(0)
         elif "rollout" in hm_type:
-            start = time.time()
+            # start = time.time()
             self._ensure_mm_clipmodel()
             img_clipreprocess = self.preprocess(img).to(self.device).unsqueeze(0)
             text_tokenized = mm_clip.tokenize(txts).to(self.device)
@@ -530,7 +530,7 @@ class CLIPExplainRunner:
             )
             emap = compute_rollout_attention(attentions)[0]
         elif "surgery" in hm_type:
-            start = time.time()
+            # start = time.time()
             self._ensure_surgery_model()
             img_clipreprocess = self.preprocess(img).to(self.device).unsqueeze(0)
             all_texts = [
@@ -549,7 +549,7 @@ class CLIPExplainRunner:
                 device=self.device,
             )[0, :, :, 0]
         elif "m2ib" in hm_type:
-            start = time.time()
+            # start = time.time()
             img_clipreprocess = self.preprocess(img).to(self.device).unsqueeze(0)
             emap = m2ib_clip_map(
                 model=self.m2ib_model,
@@ -560,14 +560,14 @@ class CLIPExplainRunner:
             )
             emap = torch.tensor(emap)
         elif "rise" in hm_type:
-            start = time.time()
+            # start = time.time()
             img_clipreprocess = self.preprocess(img).unsqueeze(0)
             emap = rise(model=self.clipmodel, image=img_clipreprocess, txt_embedding=txt_embedding, device=self.device)
         else:
             raise ValueError(f"Unknown hm_type: {hm_type}")
 
-        end = time.time()
-        print("processing time: ", end - start)
+        # end = time.time()
+        # print("processing time: ", end - start)
 
         emap -= emap.min()
         emap /= emap.max()
