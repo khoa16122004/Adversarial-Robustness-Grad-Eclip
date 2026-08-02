@@ -216,7 +216,8 @@ def main():
 
         x_adv = x_adv_raw.detach().cpu()
         save_image(x_adv, os.path.join(sample_dir, "adversarial_image_pgd.png"))
-        x_adv_normalized = normalize_ImageNet1k(x_adv).to(device)
+        x_adv_normalized_cpu = normalize_ImageNet1k(x_adv)
+        x_adv_normalized = x_adv_normalized_cpu.to(device)
 
         _, _, adv_pred_label, adv_pred_confidence = predict_zero_shot_clip(classifier, x_adv_normalized, device)
         metric_class_name = classnames[adv_pred_label]
@@ -259,15 +260,15 @@ def main():
             )
 
             curve = clean_metric.single_run(
-                x_adv_normalized,
+                x_adv_normalized_cpu,
                 heatmap.detach().cpu().numpy(),
                 verbose=args.verbose,
                 save_to=rerun_process_dir if args.save_process else None,
             )
 
             save_causal_metric_summary(
-                image_tensor=x_adv_normalized,
-                final_tensor=torch.zeros_like(x_adv_normalized) if rerun_mode == "del" else x_adv_normalized,
+                image_tensor=x_adv_normalized_cpu,
+                final_tensor=torch.zeros_like(x_adv_normalized_cpu) if rerun_mode == "del" else x_adv_normalized_cpu,
                 scores=curve,
                 output_path=os.path.join(sample_dir, f"{rerun_mode}_summary.png"),
                 mode=rerun_mode,
