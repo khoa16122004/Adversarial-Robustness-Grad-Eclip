@@ -1,0 +1,50 @@
+{
+  "input_root": "D:\\Adversarial-Robustness-Grad-Eclip\\ins_optimize_output\\kaggle\\working\\ins_optimize_output\\game\\game\\ins",
+  "pattern": "*information.json",
+  "num_files_scanned": 100,
+  "num_parse_errors": 0,
+  "parse_errors": [],
+  "normalization": "curve / max(curve)",
+  "clean_score": {
+    "clean_prob": {
+      "count": 100,
+      "mean": 0.6856500244140625,
+      "std": 0.23682517716908816,
+      "min": 0.0994873046875,
+      "max": 0.9990234375
+    },
+    "adv_prob": {
+      "count": 100,
+      "mean": 0.6587176990509033,
+      "std": 0.41990947697343783,
+      "min": 0.0,
+      "max": 1.0
+    }
+  },
+  "metrics": {
+    "del": {
+      "num_normalized_curves": 100,
+      "num_fair_aucs": 100,
+      "num_invalid_max": 0,
+      "curve_length_min": 225,
+      "curve_length_max": 225,
+      "num_truncated_to_min_length": 0,
+      "mean_fair_auc": 0.12707884369210531,
+      "std_fair_auc": 0.10377368075431993,
+      "plot_path": "D:\\Adversarial-Robustness-Grad-Eclip\\mean_curve_normalized_del.png",
+      "mean_curve_path": "D:\\Adversarial-Robustness-Grad-Eclip\\mean_curve_normalized_del.npy"
+    },
+    "ins": {
+      "num_normalized_curves": 100,
+      "num_fair_aucs": 100,
+      "num_invalid_max": 0,
+      "curve_length_min": 225,
+      "curve_length_max": 225,
+      "num_truncated_to_min_length": 0,
+      "mean_fair_auc": 0.23854889309111169,
+      "std_fair_auc": 0.27326395380486806,
+      "plot_path": "D:\\Adversarial-Robustness-Grad-Eclip\\mean_curve_normalized_ins.png",
+      "mean_curve_path": "D:\\Adversarial-Robustness-Grad-Eclip\\mean_curve_normalized_ins.npy"
+    }
+  }
+}

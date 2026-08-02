@@ -1,0 +1,47 @@
+{
+  "input_root": "D:\\Adversarial-Robustness-Grad-Eclip\\del_optimize_output\\kaggle\\working\\del_optimize_output\\eclip\\eclip\\del",
+  "pattern": "*information.json",
+  "num_files_scanned": 100,
+  "num_parse_errors": 0,
+  "parse_errors": [],
+  "clean_score": {
+    "clean_prob": {
+      "count": 100,
+      "mean": 0.6856500244140625,
+      "std": 0.23682517716908816,
+      "min": 0.0994873046875,
+      "max": 0.9990234375
+    },
+    "adv_prob": {
+      "count": 100,
+      "mean": 0.9996142578125,
+      "std": 0.0026818111446035545,
+      "min": 0.97314453125,
+      "max": 1.0
+    }
+  },
+  "metrics": {
+    "del": {
+      "num_curves": 100,
+      "num_aucs": 100,
+      "curve_length_min": 225,
+      "curve_length_max": 225,
+      "num_truncated_to_min_length": 0,
+      "mean_auc": 0.5469217050048921,
+      "std_auc": 0.13303228287361607,
+      "plot_path": "D:\\Adversarial-Robustness-Grad-Eclip\\mean_curve_del.png",
+      "mean_curve_path": "D:\\Adversarial-Robustness-Grad-Eclip\\mean_curve_del.npy"
+    },
+    "ins": {
+      "num_curves": 100,
+      "num_aucs": 100,
+      "curve_length_min": 225,
+      "curve_length_max": 225,
+      "num_truncated_to_min_length": 0,
+      "mean_auc": 0.7804900620052857,
+      "std_auc": 0.15905090412246206,
+      "plot_path": "D:\\Adversarial-Robustness-Grad-Eclip\\mean_curve_ins.png",
+      "mean_curve_path": "D:\\Adversarial-Robustness-Grad-Eclip\\mean_curve_ins.npy"
+    }
+  }
+}
