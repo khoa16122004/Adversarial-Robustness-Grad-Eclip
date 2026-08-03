@@ -6,12 +6,19 @@ from pathlib import Path
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Randomly sample key-value pairs from a source JSON mapping."
+        description=(
+            "Randomly sample from either a plain JSON mapping or a classification report "
+            "containing correct_samples."
+        )
     )
     parser.add_argument(
         "--input",
         default="vit_b_16_1k.json",
-        help="Path to source JSON mapping (e.g., vit_b_16_1k.json)",
+        help=(
+            "Path to source JSON. Supported formats: "
+            "(1) mapping {class_folder: image_path} or "
+            "(2) report with correct_samples list."
+        ),
     )
     parser.add_argument(
         "--output",
@@ -22,7 +29,10 @@ def parse_args():
         "--num-samples",
         type=int,
         default=100,
-        help="Number of random pairs to sample",
+        help=(
+            "Number of random pairs to sample. "
+            "For correct_samples input, this is number of classes (keys) sampled."
+        ),
     )
     parser.add_argument(
         "--seed",
@@ -38,6 +48,47 @@ def parse_args():
     return parser.parse_args()
 
 
+def _key_from_sample(sample):
+    image_path = sample.get("image_path")
+    if not image_path:
+        return None, None
+
+    key = sample.get("wnid")
+    if key is None:
+        key = Path(image_path).parent.name
+
+    key = str(key).strip()
+    if not key:
+        return None, None
+    return key, str(image_path)
+
+
+def build_mapping_candidates(data):
+    if isinstance(data, dict) and isinstance(data.get("correct_samples"), list):
+        correct_samples = data["correct_samples"]
+        candidates = {}
+        for sample in correct_samples:
+            if not isinstance(sample, dict):
+                continue
+            key, image_path = _key_from_sample(sample)
+            if key is None:
+                continue
+            candidates.setdefault(key, []).append(image_path)
+
+        if not candidates:
+            raise ValueError("correct_samples exists but no valid (key, image_path) entries were found.")
+
+        return candidates, "correct_samples"
+
+    if isinstance(data, dict):
+        mapping = {str(k): str(v) for k, v in data.items()}
+        if not mapping:
+            raise ValueError("Input mapping is empty.")
+        return {k: [v] for k, v in mapping.items()}, "mapping"
+
+    raise ValueError("Input JSON must be a mapping or a dict containing correct_samples.")
+
+
 def main():
     args = parse_args()
 
@@ -47,20 +98,20 @@ def main():
     with input_path.open("r", encoding="utf-8") as f:
         data = json.load(f)
 
-    if not isinstance(data, dict):
-        raise ValueError("Input JSON must be an object/dict mapping.")
+    candidates, source_type = build_mapping_candidates(data)
 
     if args.num_samples < 1:
         raise ValueError("--num-samples must be >= 1")
 
-    items = list(data.items())
-    if args.num_samples > len(items):
+    keys = list(candidates.keys())
+    if args.num_samples > len(keys):
         raise ValueError(
-            f"--num-samples ({args.num_samples}) is larger than available items ({len(items)})."
+            f"--num-samples ({args.num_samples}) is larger than available keys ({len(keys)})."
         )
 
     rng = random.Random(args.seed)
-    sampled_items = rng.sample(items, args.num_samples)
+    sampled_keys = rng.sample(keys, args.num_samples)
+    sampled_items = [(key, rng.choice(candidates[key])) for key in sampled_keys]
 
     if args.sort_keys:
         sampled_items.sort(key=lambda kv: kv[0])
@@ -73,6 +124,7 @@ def main():
     with output_path.open("w", encoding="utf-8") as f:
         json.dump(sampled_dict, f, ensure_ascii=False, indent=2)
 
+    print(f"Input type: {source_type}")
     print(f"Saved {len(sampled_dict)} samples to {output_path}")
 
 

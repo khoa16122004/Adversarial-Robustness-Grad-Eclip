@@ -31,6 +31,41 @@ from util import (
 from RISE.evaluation import CausalMetric, auc
 
 
+HM_TYPES = [
+    "selfattn",
+    "gradcam",
+    "maskclip",
+    "eclip",
+    "eclip-wo-ksim",
+    "game",
+    "rollout",
+    "surgery",
+    "m2ib",
+    "rise",
+]
+
+
+def parse_hm_types_arg(raw_items):
+    if not raw_items:
+        return None
+
+    selected = []
+    seen = set()
+    for item in raw_items:
+        for token in item.split(","):
+            name = token.strip()
+            if not name:
+                continue
+            if name not in HM_TYPES:
+                raise ValueError(f"Unknown hm type: {name}. Valid choices: {HM_TYPES}")
+            if name not in seen:
+                selected.append(name)
+                seen.add(name)
+    if not selected:
+        return None
+    return selected
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
@@ -46,8 +81,18 @@ def parse_args():
     parser.add_argument(
         "--hm-type",
         default="eclip",
-        choices=["selfattn", "gradcam", "maskclip", "eclip", "eclip-wo-ksim", "game", "rollout", "surgery", "m2ib", "rise"],
-        help="Explanation method passed to CLIPExplainRunner.generate_hm",
+        choices=HM_TYPES + ["all"],
+        help="Explanation method for evaluation; use 'all' to evaluate every supported method",
+    )
+    parser.add_argument(
+        "--hm-types",
+        nargs="+",
+        default=None,
+        help=(
+            "Manual list of explanation methods to evaluate. "
+            "Supports space-separated or comma-separated values. "
+            "Example: --hm-types eclip gradcam rise"
+        ),
     )
     parser.add_argument(
         "--target-source",
@@ -206,7 +251,18 @@ def run_xshift_attack(
         clean_norm = normalize_ImageNet1k(image_raw)
         _, clean_patches = encode_vit_tokens(clip_model, clean_norm)
         clean_patches = F.normalize(clean_patches.float(), dim=-1)
-        clean_similarity = torch.einsum("bpd,d->bp", clean_patches, target_text_feature.float()).mean().item()
+        clean_similarity_map = torch.einsum("bpd,d->bp", clean_patches, target_text_feature.float())
+        clean_similarity = clean_similarity_map.mean().item()
+        clean_logits = classifier(clean_norm)
+        clean_probs = F.softmax(clean_logits, dim=-1)
+        clean_pred_label = int(torch.argmax(clean_probs, dim=-1).item())
+
+    # Candidate selection rule:
+    # among steps that preserve original class (including clean step 0),
+    # choose the one with maximal map change.
+    selected_step = 0
+    selected_x_raw = image_raw.detach().clone()
+    selected_map_change = 0.0
 
     for step_idx in range(xshift_steps):
         x_adv_raw = torch.clamp(image_raw + delta, 0.0, 1.0)
@@ -253,11 +309,32 @@ def run_xshift_attack(
         loss.backward()
 
         with torch.no_grad():
-            delta += alpha * delta.grad.sign()
+            # Minimize the composite objective so CE(original_label) is reduced.
+            delta -= alpha * delta.grad.sign()
             delta.clamp_(-eps, eps)
             delta.copy_(topk_l0_project(delta, l0_k))
             x_adv_raw = torch.clamp(image_raw + delta, 0.0, 1.0)
             delta.copy_(x_adv_raw - image_raw)
+
+            # Evaluate preserved-class constraint and map-change score on updated sample.
+            x_adv_norm_eval = normalize_ImageNet1k(x_adv_raw)
+            logits_eval = classifier(x_adv_norm_eval)
+            probs_eval = F.softmax(logits_eval, dim=-1)
+            pred_label_eval = int(torch.argmax(probs_eval, dim=-1).item())
+            class_preserved = pred_label_eval == int(original_label)
+
+            _, patch_eval = encode_vit_tokens(clip_model, x_adv_norm_eval)
+            patch_eval = F.normalize(patch_eval.float(), dim=-1)
+            sim_eval = torch.einsum("bpd,d->bp", patch_eval, target_text_feature.float())
+            map_change = float((sim_eval - clean_similarity_map).abs().mean().item())
+
+            if class_preserved and (
+                map_change > selected_map_change
+                or (map_change == selected_map_change and (step_idx + 1) > selected_step)
+            ):
+                selected_step = step_idx + 1
+                selected_x_raw = x_adv_raw.detach().clone()
+                selected_map_change = map_change
 
         delta = delta.detach().requires_grad_(True)
 
@@ -270,19 +347,30 @@ def run_xshift_attack(
                 "loss_patch": float(loss_patch.item()),
                 "loss_entropy": float(loss_entropy.item()),
                 "similarity_target_mean": float(similarity_target.mean().item()),
+                "pred_label": pred_label_eval,
+                "class_preserved": bool(class_preserved),
+                "map_change": map_change,
             }
         )
 
     with torch.no_grad():
-        x_adv_raw = torch.clamp(image_raw + delta, 0.0, 1.0)
+        # Return the best class-preserving candidate (clean step is always a fallback candidate).
+        x_adv_raw = selected_x_raw
         x_adv_norm = normalize_ImageNet1k(x_adv_raw)
         _, adv_patches = encode_vit_tokens(clip_model, x_adv_norm)
         adv_patches = F.normalize(adv_patches.float(), dim=-1)
         adv_similarity = torch.einsum("bpd,d->bp", adv_patches, target_text_feature.float()).mean().item()
+        adv_logits = classifier(x_adv_norm)
+        adv_probs = F.softmax(adv_logits, dim=-1)
+        adv_pred_label = int(torch.argmax(adv_probs, dim=-1).item())
 
     details = {
         "clean_similarity": float(clean_similarity),
         "adv_similarity": float(adv_similarity),
+        "selected_step": int(selected_step),
+        "selected_map_change": float(selected_map_change),
+        "selected_pred_label": int(adv_pred_label),
+        "clean_pred_label": int(clean_pred_label),
         "trace": trace,
     }
     return x_adv_raw, details
@@ -310,8 +398,17 @@ def main():
         use_tqdm=True,
     )
     metric_model = build_causal_metric_model(classifier)
-    output_dir = os.path.join(args.output_dir, args.hm_type, "xshift")
-    os.makedirs(output_dir, exist_ok=True)
+
+    manual_hm_types = parse_hm_types_arg(args.hm_types)
+    if manual_hm_types is not None:
+        eval_hm_types = manual_hm_types
+    elif args.hm_type == "all":
+        eval_hm_types = list(HM_TYPES)
+    else:
+        eval_hm_types = [args.hm_type]
+
+    for hm_name in eval_hm_types:
+        os.makedirs(os.path.join(args.output_dir, hm_name, "xshift"), exist_ok=True)
 
     all_text_features = classifier.zero_shot_weights.detach().to(device)
     all_text_features = F.normalize(all_text_features, dim=0)
@@ -320,8 +417,6 @@ def main():
         sample_list = json.load(f)
 
     for folder_name, image_name in tqdm(sample_list.items()):
-        sample_dir = os.path.join(output_dir, folder_name)
-        os.makedirs(sample_dir, exist_ok=True)
 
         img_path = os.path.join(args.img_dir, image_name)
         image = Image.open(img_path).convert("RGB")
@@ -355,7 +450,6 @@ def main():
         )
 
         x_adv = x_adv_raw.detach().cpu()
-        save_image(x_adv, os.path.join(sample_dir, "adversarial_image_xshift.png"))
         x_adv_normalized_cpu = normalize_ImageNet1k(x_adv)
         x_adv_normalized = x_adv_normalized_cpu.to(device)
 
@@ -370,88 +464,98 @@ def main():
 
         print(
             f"[{folder_name}] pred_class(clean)={classnames[pred_label]} ({pred_confidence:.4f}) | "
-            f"pred_class(adv)={classnames[adv_pred_label]} ({adv_pred_confidence:.4f})"
+            f"pred_class(adv)={classnames[adv_pred_label]} ({adv_pred_confidence:.4f}) | "
+            f"selected_step={xshift_details['selected_step']} map_change={xshift_details['selected_map_change']:.6f}"
         )
 
-        heatmap = generate_hm(
-            clip_model,
-            args.hm_type,
-            x_adv_normalized,
-            adv_text_embedding,
-            adv_target_texts,
-            metric_resize,
-            preprocess,
-        )
+        for hm_name in eval_hm_types:
+            sample_dir = os.path.join(args.output_dir, hm_name, "xshift", folder_name)
+            os.makedirs(sample_dir, exist_ok=True)
+            save_image(x_adv, os.path.join(sample_dir, "adversarial_image_xshift.png"))
 
-        rerun_results = {}
-        for rerun_mode in ["del", "ins"]:
-            rerun_step_function = (lambda x: torch.zeros_like(x)) if rerun_mode == "del" else blur_fn
-            clean_metric = CausalMetric(metric_model, rerun_mode, args.step, rerun_step_function)
-
-            rerun_process_dir = os.path.join(sample_dir, f"steps_{rerun_mode}")
-            if args.save_process:
-                os.makedirs(rerun_process_dir, exist_ok=True)
-
-            save_saliency_outputs(
-                heatmap.detach().cpu().numpy(),
-                resized_image,
-                sample_dir,
-                stem=f"{rerun_mode}_xshift_{args.hm_type}_saliency",
+            heatmap = generate_hm(
+                clip_model,
+                hm_name,
+                x_adv_normalized,
+                adv_text_embedding,
+                adv_target_texts,
+                metric_resize,
+                preprocess,
             )
 
-            curve = clean_metric.single_run(
-                x_adv_normalized_cpu,
-                heatmap.detach().cpu().numpy(),
-                verbose=args.verbose,
-                save_to=rerun_process_dir if args.save_process else None,
-            )
+            rerun_results = {}
+            for rerun_mode in ["del", "ins"]:
+                rerun_step_function = (lambda x: torch.zeros_like(x)) if rerun_mode == "del" else blur_fn
+                clean_metric = CausalMetric(metric_model, rerun_mode, args.step, rerun_step_function)
 
-            save_causal_metric_summary(
-                image_tensor=x_adv_normalized_cpu,
-                final_tensor=torch.zeros_like(x_adv_normalized_cpu) if rerun_mode == "del" else x_adv_normalized_cpu,
-                scores=curve,
-                output_path=os.path.join(sample_dir, f"{rerun_mode}_summary.png"),
-                mode=rerun_mode,
-                class_name=metric_class_name,
-                preprocess=preprocess,
-            )
+                rerun_process_dir = os.path.join(sample_dir, f"steps_{rerun_mode}")
+                if args.save_process:
+                    os.makedirs(rerun_process_dir, exist_ok=True)
 
-            rerun_results[rerun_mode] = {
-                "curve": curve.tolist(),
-                "auc": float(auc(curve)),
+                save_saliency_outputs(
+                    heatmap.detach().cpu().numpy(),
+                    resized_image,
+                    sample_dir,
+                    stem=f"{rerun_mode}_xshift_{hm_name}_saliency",
+                )
+
+                curve = clean_metric.single_run(
+                    x_adv_normalized_cpu,
+                    heatmap.detach().cpu().numpy(),
+                    verbose=args.verbose,
+                    save_to=rerun_process_dir if args.save_process else None,
+                )
+
+                save_causal_metric_summary(
+                    image_tensor=x_adv_normalized_cpu,
+                    final_tensor=torch.zeros_like(x_adv_normalized_cpu) if rerun_mode == "del" else x_adv_normalized_cpu,
+                    scores=curve,
+                    output_path=os.path.join(sample_dir, f"{rerun_mode}_summary.png"),
+                    mode=rerun_mode,
+                    class_name=metric_class_name,
+                    preprocess=preprocess,
+                )
+
+                rerun_results[rerun_mode] = {
+                    "curve": curve.tolist(),
+                    "auc": float(auc(curve)),
+                }
+
+            curve_information = {
+                "attack_type": "xshift",
+                "eval_hm_type": hm_name,
+                "target_source": args.target_source,
+                "target_label": int(target_label),
+                "target_classname": classnames[target_label],
+                "pred_label_clean": int(pred_label),
+                "pred_classname_clean": classnames[pred_label],
+                "pred_confidence_clean": float(pred_confidence),
+                "pred_label_adv": int(adv_pred_label),
+                "pred_classname_adv": classnames[adv_pred_label],
+                "pred_confidence_adv": float(adv_pred_confidence),
+                "clean_similarity": xshift_details["clean_similarity"],
+                "adv_similarity": xshift_details["adv_similarity"],
+                "selected_step": xshift_details["selected_step"],
+                "selected_map_change": xshift_details["selected_map_change"],
+                "selected_pred_label": xshift_details["selected_pred_label"],
+                "xshift_trace": xshift_details["trace"],
+                "config": {
+                    "eps": args.eps,
+                    "alpha": args.alpha,
+                    "xshift_steps": args.xshift_steps,
+                    "xai_topk_ratio": args.xai_topk_ratio,
+                    "xai_alpha": args.xai_alpha,
+                    "lambda_pred": args.lambda_pred,
+                    "lambda_patch": args.lambda_patch,
+                    "lambda_ent": args.lambda_ent,
+                    "margin": args.margin,
+                    "l0_k": args.l0_k,
+                },
+                "rerun": rerun_results,
             }
 
-        curve_information = {
-            "attack_type": "xshift",
-            "target_source": args.target_source,
-            "target_label": int(target_label),
-            "target_classname": classnames[target_label],
-            "pred_label_clean": int(pred_label),
-            "pred_classname_clean": classnames[pred_label],
-            "pred_confidence_clean": float(pred_confidence),
-            "pred_label_adv": int(adv_pred_label),
-            "pred_classname_adv": classnames[adv_pred_label],
-            "pred_confidence_adv": float(adv_pred_confidence),
-            "clean_similarity": xshift_details["clean_similarity"],
-            "adv_similarity": xshift_details["adv_similarity"],
-            "xshift_trace": xshift_details["trace"],
-            "config": {
-                "eps": args.eps,
-                "alpha": args.alpha,
-                "xshift_steps": args.xshift_steps,
-                "xai_topk_ratio": args.xai_topk_ratio,
-                "xai_alpha": args.xai_alpha,
-                "lambda_pred": args.lambda_pred,
-                "lambda_patch": args.lambda_patch,
-                "lambda_ent": args.lambda_ent,
-                "margin": args.margin,
-                "l0_k": args.l0_k,
-            },
-            "rerun": rerun_results,
-        }
-
-        with open(os.path.join(sample_dir, "curve_information.json"), "w", encoding="utf-8") as f:
-            json.dump(curve_information, f, ensure_ascii=False, indent=2)
+            with open(os.path.join(sample_dir, "curve_information.json"), "w", encoding="utf-8") as f:
+                json.dump(curve_information, f, ensure_ascii=False, indent=2)
 
 
 if __name__ == "__main__":
