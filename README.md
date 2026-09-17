@@ -1,29 +1,22 @@
-# Adversarial-Robustness-Grad-Eclip
+# Faithfulness Oriented Adversarial (FOA) Attack to VLMs
 
 Script-first runbook for adversarial explanation robustness experiments.
 
+![sample result](figure/thumnail.png)
+
+
+![FOA attack overview](figure/pipeline.png)
+
+
+
 ## 1) Key files and locations
-
 - Main attack/evaluation entrypoint: ./adv_score.py
-- ROAD batch evaluation: ./main_script/ROAD_evaluate_and_export.py
-- Confidence aggregation by epsilon: ./script_eval/report_confidence_by_epsilon.py
-- LaTeX export for confidence table: ./script_eval/export_latex_confidence_by_epsilon.py
-- Shared utility functions: ./util.py
-
-### FOA proposed algorithm location
-
 - FOA implementation file: ./RISE/evaluation.py
 - Core class: JointAdversarialCausalMetric
 - Core method: JointAdversarialCausalMetric.single_run(...)
-- Absolute path on this machine: D:/Adversarial-Robustness-Grad-Eclip/RISE/evaluation.py
 
-## 2) Path convention
 
-- Run commands from repository root.
-- Use relative paths for all inputs/outputs.
-- Keep in mind the folder name is classification_reuslt in this repository.
-
-## 3) Run attack scripts (IOA, DOA, FOA)
+## 2) Run attack scripts (IOA, DOA, FOA)
 
 Mode mapping:
 
@@ -31,7 +24,7 @@ Mode mapping:
 - ins -> IOA
 - del+ins -> FOA
 
-### 3.1 Single explainer
+### 2.1 Single explainer
 
 ```powershell
 python .\adv_score.py \
@@ -48,7 +41,7 @@ python .\adv_score.py \
   --process-batch-size 100
 ```
 
-### 3.2 Multiple explainers
+### 2.2 Multiple explainers
 
 ```powershell
 foreach ($hm in @("eclip","game","gradcam","maskclip","rise")) {
@@ -64,7 +57,7 @@ foreach ($hm in @("eclip","game","gradcam","maskclip","rise")) {
 }
 ```
 
-## 4) Run ROAD evaluation
+## 3) Run ROAD evaluation
 
 ```powershell
 python .\main_script\ROAD_evaluate_and_export.py \
@@ -81,7 +74,7 @@ Note: this script currently expects the dataset token StandfordPet.
 
 
 
-## 5 Quick FOA run
+## 4 Quick FOA run
 
 ```powershell
 python .\adv_score.py \
