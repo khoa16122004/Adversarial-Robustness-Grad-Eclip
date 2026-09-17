@@ -167,3 +167,6 @@ cython_debug/
 .nfs*
 select_one_per_class.py
 standford_dogdataaset
+script_eval
+benchmark
+main_script

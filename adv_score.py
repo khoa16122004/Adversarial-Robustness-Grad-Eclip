@@ -1,3 +1,10 @@
+"""
+
+∇δ​L=T1​t∑​Mt​⊙∇zt​​fc​(zt​).
+
+"""
+
+
 import argparse
 import json
 import os
@@ -25,7 +32,7 @@ from util import (
     save_saliency_outputs,
 )
 from torchvision.utils import save_image
-from RISE.evaluation import AdversarialCausalMetric, CausalMetric, auc
+from RISE.evaluation import AdversarialCausalMetric, CausalMetric, JointAdversarialCausalMetric, auc
 
 
 def parse_args():
@@ -80,7 +87,12 @@ def parse_args():
         default=32,
         help="Number of process states evaluated per forward pass in each PGD iteration for both del/ins",
     )
-    parser.add_argument("--mode", default="del", choices=["del", "ins"], help="Causal metric mode: deletion or insertion")
+    parser.add_argument(
+        "--mode",
+        default="del",
+        choices=["del", "ins", "del+ins"],
+        help="Causal metric mode: deletion, insertion, or both (del+ins)",
+    )
     parser.add_argument(
         "--verbose",
         type=int,
@@ -188,94 +200,203 @@ def main():
             
         
         
-        if args.mode == "del":
-            step_function = lambda x: torch.zeros_like(x)
-        else:
-            step_function = blur_fn
-            
-        # ================================================ adversarial attack ================
-
-        adv_causualmetric = AdversarialCausalMetric(
-            metric_model, # softmax head model
-            clip_model, # raw model
-            args.mode,
-            args.step,
-            step_function,
-            args.hm_type,
-            text_embedding,
-            target_texts,
-            metric_resize,
-            preprocess
-        )
-        x_adv, details = adv_causualmetric.single_run( # are not normalzied
-            image_raw,
-            generate_hm, # explain function
-            eps=args.eps / 255.0,
-            alpha=args.alpha / 255.0, 
-            pgd_steps=args.pgd_steps,
-            process_batch_size=args.process_batch_size,
-        )
-        x_adv = x_adv.detach().cpu()    
-        save_image(x_adv, os.path.join(sample_dir, f"adversarial_image_{args.mode}.png"))
-        x_adv_normalize = normalize_ImageNet1k(x_adv)
-
-        # =============================== rerun ===============
-        heatmap = generate_hm(
-            clip_model,
-            args.hm_type,
-            x_adv_normalize, # normalzied image
-            text_embedding,
-            target_texts,
-            metric_resize,
-            preprocess,
-        )
-
-        rerun_results = {}
-        for rerun_mode in ["del", "ins"]:
-            rerun_step_function = (lambda x: torch.zeros_like(x)) if rerun_mode == "del" else blur_fn
-            clean_causualmetric = CausalMetric(metric_model, rerun_mode, args.step, rerun_step_function)
-
-            rerun_process_dir = os.path.join(sample_dir, f"steps_{rerun_mode}")
-            if args.save_process:
-                os.makedirs(rerun_process_dir, exist_ok=True)
-
-            save_saliency_outputs(
-                heatmap.detach().cpu().numpy(),
-                resized_image,
-                sample_dir,
-                stem=f"{rerun_mode}_adv_{args.hm_type}_saliency",
+        if args.mode == "del+ins":
+            joint_metric = JointAdversarialCausalMetric(
+                metric_model,
+                clip_model,
+                args.step,
+                (lambda x: torch.zeros_like(x)),
+                blur_fn,
+                args.hm_type,
+                text_embedding,
+                target_texts,
+                metric_resize,
+                preprocess,
             )
+            x_adv, details = joint_metric.single_run(
+                image_raw,
+                generate_hm,
+                eps=args.eps / 255.0,
+                alpha=args.alpha / 255.0,
+                pgd_steps=args.pgd_steps,
+                process_batch_size=args.process_batch_size,
+            )
+            x_adv = x_adv.detach().cpu()
+            save_image(x_adv, os.path.join(sample_dir, "adversarial_image_del_ins.png"))
+            x_adv_normalize = normalize_ImageNet1k(x_adv)
 
-            curve = clean_causualmetric.single_run(
+            _, _, adv_pred_label, adv_pred_confidence = predict_zero_shot_clip(
+                classifier, x_adv_normalize, device
+            )
+            retain_class_label = int(target_label)
+            retain_classname = classnames[retain_class_label]
+            adv_pred_retain = bool(adv_pred_label == retain_class_label)
+
+            heatmap = generate_hm(
+                clip_model,
+                args.hm_type,
                 x_adv_normalize,
-                heatmap.detach().cpu().numpy(),
-                verbose=args.verbose,
-                save_to=rerun_process_dir if args.save_process else None,
+                text_embedding,
+                target_texts,
+                metric_resize,
+                preprocess,
             )
 
-            save_causal_metric_summary(
-                image_tensor=x_adv_normalize,
-                final_tensor=torch.zeros_like(x_adv) if rerun_mode == "del" else x_adv_normalize,
-                scores=curve,
-                output_path=os.path.join(sample_dir, f"{rerun_mode}_summary.png"),
-                mode=rerun_mode,
-                class_name=classnames[pred_label],
-                preprocess=preprocess,
-            )
+            rerun_results = {}
+            for rerun_mode in ["del", "ins"]:
+                rerun_step_function = (lambda x: torch.zeros_like(x)) if rerun_mode == "del" else blur_fn
+                clean_causualmetric = CausalMetric(metric_model, rerun_mode, args.step, rerun_step_function)
 
-            rerun_results[rerun_mode] = {
-                "curve": curve.tolist(),
-                "auc": float(auc(curve)),
+                rerun_process_dir = os.path.join(sample_dir, f"steps_joint_{rerun_mode}")
+                if args.save_process:
+                    os.makedirs(rerun_process_dir, exist_ok=True)
+
+                save_saliency_outputs(
+                    heatmap.detach().cpu().numpy(),
+                    resized_image,
+                    sample_dir,
+                    stem=f"joint_{rerun_mode}_adv_{args.hm_type}_saliency",
+                )
+
+                curve = clean_causualmetric.single_run(
+                    x_adv_normalize,
+                    heatmap.detach().cpu().numpy(),
+                    verbose=args.verbose,
+                    save_to=rerun_process_dir if args.save_process else None,
+                )
+
+                save_causal_metric_summary(
+                    image_tensor=x_adv_normalize,
+                    final_tensor=torch.zeros_like(x_adv) if rerun_mode == "del" else x_adv_normalize,
+                    scores=curve,
+                    output_path=os.path.join(sample_dir, f"joint_{rerun_mode}_summary.png"),
+                    mode=rerun_mode,
+                    class_name=classnames[pred_label],
+                    preprocess=preprocess,
+                )
+
+                rerun_results[rerun_mode] = {
+                    "curve": curve.tolist(),
+                    "auc": float(auc(curve)),
+                }
+
+            combined_score = float(rerun_results["del"]["auc"] + rerun_results["ins"]["auc"])
+            curve_information = {
+                "attack_mode": "del+ins",
+                "retain_class_label": retain_class_label,
+                "retain_classname": retain_classname,
+                "clean_prob": details["clean_prob"],
+                "adv_prob": details["adv_prob"],
+                "clean_score": details["clean_prob"],
+                "adv_score": details["adv_prob"],
+                "adv_pred_label": adv_pred_label,
+                "adv_pred_classname": classnames[adv_pred_label],
+                "adv_pred_confidence": adv_pred_confidence,
+                "adv_pred_retain": adv_pred_retain,
+                "pgd_loss": details.get("loss", []),
+                "pgd_trace": details.get("pgd_trace", []),
+                "rerun": rerun_results,
+                "combined_score": combined_score,
+                "score_formula": "joint_del_auc + joint_ins_auc",
             }
+        else:
+            step_function = (lambda x: torch.zeros_like(x)) if args.mode == "del" else blur_fn
 
-        curve_information = {
-            "attack_mode": args.mode,
-            "clean_prob": details["clean_prob"],
-            "adv_prob": details["adv_prob"],
-            "pgd_loss": details.get("loss", []),
-            "pgd_trace": details.get("pgd_trace", []),
-            "rerun": rerun_results,
-        }
+            adv_causualmetric = AdversarialCausalMetric(
+                metric_model, # softmax head model
+                clip_model, # raw model
+                args.mode,
+                args.step,
+                step_function,
+                args.hm_type,
+                text_embedding,
+                target_texts,
+                metric_resize,
+                preprocess
+            )
+            x_adv, details = adv_causualmetric.single_run(
+                image_raw,
+                generate_hm,
+                eps=args.eps / 255.0,
+                alpha=args.alpha / 255.0,
+                pgd_steps=args.pgd_steps,
+                process_batch_size=args.process_batch_size,
+            )
+            x_adv = x_adv.detach().cpu()
+            save_image(x_adv, os.path.join(sample_dir, f"adversarial_image_{args.mode}.png"))
+            x_adv_normalize = normalize_ImageNet1k(x_adv)
+
+            _, _, adv_pred_label, adv_pred_confidence = predict_zero_shot_clip(
+                classifier, x_adv_normalize, device
+            )
+            retain_class_label = int(target_label)
+            retain_classname = classnames[retain_class_label]
+            adv_pred_retain = bool(adv_pred_label == retain_class_label)
+
+            heatmap = generate_hm(
+                clip_model,
+                args.hm_type,
+                x_adv_normalize,
+                text_embedding,
+                target_texts,
+                metric_resize,
+                preprocess,
+            )
+
+            rerun_results = {}
+            for rerun_mode in ["del", "ins"]:
+                rerun_step_function = (lambda x: torch.zeros_like(x)) if rerun_mode == "del" else blur_fn
+                clean_causualmetric = CausalMetric(metric_model, rerun_mode, args.step, rerun_step_function)
+
+                rerun_process_dir = os.path.join(sample_dir, f"steps_{args.mode}_{rerun_mode}")
+                if args.save_process:
+                    os.makedirs(rerun_process_dir, exist_ok=True)
+
+                save_saliency_outputs(
+                    heatmap.detach().cpu().numpy(),
+                    resized_image,
+                    sample_dir,
+                    stem=f"{args.mode}_{rerun_mode}_adv_{args.hm_type}_saliency",
+                )
+
+                curve = clean_causualmetric.single_run(
+                    x_adv_normalize,
+                    heatmap.detach().cpu().numpy(),
+                    verbose=args.verbose,
+                    save_to=rerun_process_dir if args.save_process else None,
+                )
+
+                save_causal_metric_summary(
+                    image_tensor=x_adv_normalize,
+                    final_tensor=torch.zeros_like(x_adv) if rerun_mode == "del" else x_adv_normalize,
+                    scores=curve,
+                    output_path=os.path.join(sample_dir, f"{args.mode}_{rerun_mode}_summary.png"),
+                    mode=rerun_mode,
+                    class_name=classnames[pred_label],
+                    preprocess=preprocess,
+                )
+
+                rerun_results[rerun_mode] = {
+                    "curve": curve.tolist(),
+                    "auc": float(auc(curve)),
+                }
+
+            curve_information = {
+                "attack_mode": args.mode,
+                "retain_class_label": retain_class_label,
+                "retain_classname": retain_classname,
+                "clean_prob": details["clean_prob"],
+                "adv_prob": details["adv_prob"],
+                "clean_score": details["clean_prob"],
+                "adv_score": details["adv_prob"],
+                "adv_pred_label": adv_pred_label,
+                "adv_pred_classname": classnames[adv_pred_label],
+                "adv_pred_confidence": adv_pred_confidence,
+                "adv_pred_retain": adv_pred_retain,
+                "pgd_loss": details.get("loss", []),
+                "pgd_trace": details.get("pgd_trace", []),
+                "rerun": rerun_results,
+            }
 
         with open(os.path.join(sample_dir, "curve_information.json"), "w", encoding="utf-8") as f:
             json.dump(curve_information, f, ensure_ascii=False, indent=2)

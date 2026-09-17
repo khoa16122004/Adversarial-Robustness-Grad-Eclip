@@ -137,13 +137,6 @@ def parse_args():
     parser.add_argument("--lambda-ent", type=float, default=0.05, help="Weight for entropy concentration loss")
     parser.add_argument("--margin", type=float, default=0.05, help="Margin for patch target-dominance loss")
     parser.add_argument(
-        "--l0-k",
-        type=int,
-        default=5000,
-        help="Max number of perturbed entries in delta after projection (set <=0 to disable)",
-    )
-
-    parser.add_argument(
         "--verbose",
         type=int,
         default=0,
@@ -205,24 +198,6 @@ def encode_vit_tokens(clip_model, image_normalized):
     return cls_feature, patch_features
 
 
-def topk_l0_project(delta, k):
-    if k is None or k <= 0:
-        return delta
-
-    flat = delta.view(delta.shape[0], -1)
-    n = flat.shape[1]
-    k = min(k, n)
-    if k >= n:
-        return delta
-
-    values = flat.abs()
-    topk_idx = values.topk(k=k, dim=1, largest=True, sorted=False).indices
-
-    mask = torch.zeros_like(flat)
-    mask.scatter_(1, topk_idx, 1.0)
-    return (flat * mask).view_as(delta)
-
-
 def run_xshift_attack(
     clip_model,
     classifier,
@@ -239,7 +214,6 @@ def run_xshift_attack(
     lambda_patch,
     lambda_ent,
     margin,
-    l0_k,
 ):
     device = image_raw.device
     delta = torch.zeros_like(image_raw, requires_grad=True)
@@ -312,7 +286,6 @@ def run_xshift_attack(
             # Minimize the composite objective so CE(original_label) is reduced.
             delta -= alpha * delta.grad.sign()
             delta.clamp_(-eps, eps)
-            delta.copy_(topk_l0_project(delta, l0_k))
             x_adv_raw = torch.clamp(image_raw + delta, 0.0, 1.0)
             delta.copy_(x_adv_raw - image_raw)
 
@@ -446,7 +419,6 @@ def main():
             lambda_patch=args.lambda_patch,
             lambda_ent=args.lambda_ent,
             margin=args.margin,
-            l0_k=args.l0_k,
         )
 
         x_adv = x_adv_raw.detach().cpu()
@@ -549,7 +521,6 @@ def main():
                     "lambda_patch": args.lambda_patch,
                     "lambda_ent": args.lambda_ent,
                     "margin": args.margin,
-                    "l0_k": args.l0_k,
                 },
                 "rerun": rerun_results,
             }

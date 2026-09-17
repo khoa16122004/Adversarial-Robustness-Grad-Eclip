@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import numpy as np
 from tqdm import tqdm
 try:
     from CLIP import clip
@@ -9,6 +10,7 @@ except ImportError:
 import torch
 import torch.nn.functional as F
 from PIL import Image
+from torchvision import transforms
 from torchvision.transforms import Resize
 
 from util import (
@@ -23,6 +25,139 @@ from util import (
     save_saliency_outputs,
 )
 from RISE.evaluation import CausalMetric, auc
+from road_evaluation.road.imputed_dataset import ImputedDataset
+from road_evaluation.road.imputations import ChannelMeanImputer, NoisyLinearImputer, ZeroImputer
+
+
+DEFAULT_ROAD_PERCENTAGES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+
+class SingleImageDataset(torch.utils.data.Dataset):
+    def __init__(self, image_tensor: torch.Tensor, label: int):
+        self.image_tensor = image_tensor.detach().cpu()
+        self.label = int(label)
+
+    def __len__(self) -> int:
+        return 1
+
+    def __getitem__(self, index: int):
+        if index != 0:
+            raise IndexError(index)
+        return self.image_tensor.clone(), self.label
+
+
+def normalize_imagenet1k_clip(x: torch.Tensor) -> torch.Tensor:
+    mean = torch.tensor([0.48145466, 0.4578275, 0.40821073], dtype=x.dtype).view(3, 1, 1)
+    std = torch.tensor([0.26862954, 0.26130258, 0.27577711], dtype=x.dtype).view(3, 1, 1)
+    return (x - mean) / std
+
+
+def choose_imputer(kind: str, linear_noise: float):
+    if kind == "linear":
+        return NoisyLinearImputer(noise=linear_noise)
+    if kind == "zero":
+        return ZeroImputer()
+    return ChannelMeanImputer()
+
+
+def saliency_to_road_mask(saliency: np.ndarray) -> np.ndarray:
+    sal = np.asarray(saliency, dtype=np.float32)
+    if sal.ndim == 3 and sal.shape[0] in (1, 3) and sal.shape[2] not in (1, 3):
+        sal = np.transpose(sal, (1, 2, 0))
+    if sal.ndim == 2:
+        sal = np.repeat(sal[:, :, None], 3, axis=2)
+    elif sal.ndim == 3 and sal.shape[2] == 1:
+        sal = np.repeat(sal, 3, axis=2)
+    elif sal.ndim == 3 and sal.shape[2] > 3:
+        sal = sal[:, :, :3]
+    elif sal.ndim != 3:
+        raise ValueError(f"Unsupported saliency shape for ROAD: {sal.shape}")
+    return sal
+
+
+def compute_auc(curve: np.ndarray, x: np.ndarray) -> float:
+    if curve.size == 0:
+        return float("nan")
+    return float(np.trapezoid(curve.astype(np.float64), x.astype(np.float64)))
+
+
+def compute_fair_auc(curve: np.ndarray, x: np.ndarray):
+    if curve.size == 0:
+        return None
+    max_val = float(np.max(curve))
+    if not np.isfinite(max_val) or max_val <= 0.0:
+        return None
+    norm = curve.astype(np.float64) / max_val
+    val = float(np.trapezoid(norm, x.astype(np.float64)))
+    if not np.isfinite(val):
+        return None
+    return val
+
+
+def to_float_list(values):
+    return [float(v) for v in values]
+
+
+def evaluate_road_deletion(
+    metric_model,
+    image_raw: torch.Tensor,
+    road_mask: np.ndarray,
+    pred_label: int,
+    target_label: int,
+    percentages,
+    imputer,
+    device,
+):
+    base_dataset = SingleImageDataset(image_raw, pred_label)
+    deletion_curve = []
+    deletion_acc_curve = []
+
+    metric_model.eval()
+    metric_model.to(device)
+
+    for p in percentages:
+        ds_imputed = ImputedDataset(
+            base_dataset=base_dataset,
+            mask=[road_mask],
+            th_p=float(p),
+            remove=True,
+            imputation=imputer,
+            transform=normalize_imagenet1k_clip,
+            prediction=[target_label],
+            use_cache=False,
+        )
+
+        img_imp, label_imp, _ = ds_imputed[0]
+        inputs = img_imp.unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            outputs = metric_model(inputs)
+            if outputs.ndim != 2:
+                raise ValueError("Unexpected model output shape")
+            if target_label < 0 or target_label >= outputs.shape[1]:
+                raise ValueError(
+                    f"target_label out of range: {target_label}, num_classes={outputs.shape[1]}"
+                )
+            top = int(torch.argmax(outputs, dim=1).item())
+            target_prob = float(outputs[0, target_label].item())
+            acc = float(top == int(label_imp))
+
+        deletion_curve.append(target_prob)
+        deletion_acc_curve.append(acc)
+
+    x = np.asarray(percentages, dtype=np.float64)
+    curve_arr = np.asarray(deletion_curve, dtype=np.float64)
+    acc_arr = np.asarray(deletion_acc_curve, dtype=np.float64)
+
+    return {
+        "percentages": to_float_list(percentages),
+        "deletion_curve": to_float_list(deletion_curve),
+        "deletion_accuracy_curve": to_float_list(deletion_acc_curve),
+        "deletion_auc": float(compute_auc(curve_arr, x)),
+        "deletion_fair_auc": compute_fair_auc(curve_arr, x),
+        "deletion_accuracy_auc": float(compute_auc(acc_arr, x)),
+        "morf": True,
+    }
 
 
 def parse_args():
@@ -66,6 +201,25 @@ def parse_args():
         help="Prompt template for zero-shot text, use {} as class placeholder",
     )
     parser.add_argument("--save-process", action="store_true", help="Save every deletion/insertion step image")
+    parser.add_argument(
+        "--road-imputer",
+        choices=["linear", "zero", "fixed"],
+        default="linear",
+        help="ROAD imputer: linear (NoisyLinear), zero, fixed(channel mean)",
+    )
+    parser.add_argument(
+        "--road-linear-noise",
+        type=float,
+        default=0.01,
+        help="Noise term for NoisyLinearImputer (used when --road-imputer linear)",
+    )
+    parser.add_argument(
+        "--road-percentages",
+        nargs="*",
+        type=float,
+        default=DEFAULT_ROAD_PERCENTAGES,
+        help="ROAD deletion percentages in [0,1], e.g. --road-percentages 0.1 0.2 ...",
+    )
     parser.add_argument(
         "--verbose",
         type=int,
@@ -120,8 +274,13 @@ def save_outputs(output_json, output_txt, payload):
 
 def main():
     args = parse_args()
+    for p in args.road_percentages:
+        if p < 0.0 or p > 1.0:
+            raise ValueError("All --road-percentages values must be within [0, 1]")
+
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     classnames = load_classnames(args.classnames_path)
+    road_imputer = choose_imputer(args.road_imputer, args.road_linear_noise)
 
     clip_source = args.clip_checkpoint or args.clip_model
     if args.clip_checkpoint and not os.path.isfile(args.clip_checkpoint):
@@ -157,6 +316,7 @@ def main():
         input_resolution = clip_model.visual.input_resolution
         resized_image = image.resize((input_resolution, input_resolution), Image.BICUBIC)
         image_tensor = preprocess(resized_image).unsqueeze(0)
+        image_raw = transforms.ToTensor()(resized_image)
         metric_resize = Resize(tuple(image_tensor.shape[-2:]))
         
         _, _, pred_label, pred_confidence = predict_zero_shot_clip(classifier, image_tensor, device)
@@ -177,6 +337,9 @@ def main():
             metric_resize,
             preprocess,
         )
+
+        clean_resized_path = os.path.join(sample_dir, "clean_image_resized.png")
+        resized_image.save(clean_resized_path)
         
         saliency = heatmap.detach().cpu().numpy()
         save_saliency_outputs(
@@ -239,19 +402,36 @@ def main():
             'deletion_curve': deletion_curve.tolist(),
             'deletion_auc': float(auc(deletion_curve)),
         }
+
+        road_mask = saliency_to_road_mask(saliency)
+        road_information = evaluate_road_deletion(
+            metric_model=metric_model,
+            image_raw=image_raw,
+            road_mask=road_mask,
+            pred_label=int(pred_label),
+            target_label=int(target_label),
+            percentages=args.road_percentages,
+            imputer=road_imputer,
+            device=device,
+        )
+        road_information.update(
+            {
+                "metric": "road_deletion",
+                "pred_label": int(pred_label),
+                "pred_confidence": float(pred_confidence),
+                "target_label": int(target_label),
+                "saliency_path_used": os.path.join(sample_dir, "saliency", f"{args.hm_type}_saliency.npy"),
+                "image_path_used": clean_resized_path,
+            }
+        )
         
         with open(os.path.join(sample_dir, "insertion_information.json"), "w", encoding="utf-8") as f:
             json.dump(insertion_information, f, ensure_ascii=False, indent=2)
         with open(os.path.join(sample_dir, "deletion_information.json"), "w", encoding="utf-8") as f:
             json.dump(deletion_information, f, ensure_ascii=False, indent=2)
+        with open(os.path.join(sample_dir, "road_deletion_information.json"), "w", encoding="utf-8") as f:
+            json.dump(road_information, f, ensure_ascii=False, indent=2)
     
-
-"""
-Delection:
-Với một ảnh và một saliency, liệu có thể tạo ra được một ảnh từ ảnh gốc
-mà nếu ta xóa đi các pixel quan trọng theo saliency thì model sẽ giảm prob
-
-"""
 
    
 

@@ -1,29 +1,109 @@
-# Grad-Eclip
+# Adversarial-Robustness-Grad-Eclip
 
-Grad-Eclip is a straightforward and easy-to-implement method to generate visual explanation heat maps for transformer-based CLIP. It can be applied on both image and text branch. The framework and results are shown here:
+Script-first runbook for adversarial explanation robustness experiments.
 
-- framework
-<img width=90% src="https://github.com/Cyang-Zhao/Grad-Eclip/blob/main/images/framework.png"/>
+## 1) Key files and locations
 
-- visualization comparison of different XAI methods on explaining image encoder with provided text prompts. 
-<img width=90% src="https://github.com/Cyang-Zhao/Grad-Eclip/blob/main/images/examples.jpg"/>
+- Main attack/evaluation entrypoint: ./adv_score.py
+- ROAD batch evaluation: ./main_script/ROAD_evaluate_and_export.py
+- Confidence aggregation by epsilon: ./script_eval/report_confidence_by_epsilon.py
+- LaTeX export for confidence table: ./script_eval/export_latex_confidence_by_epsilon.py
+- Shared utility functions: ./util.py
 
-- visualization comparison of different XAI methods on explaining both image encoder and text encoder with image-text pair. 
-<img width=90% src="https://github.com/Cyang-Zhao/Grad-Eclip/blob/main/images/examples_img_text.jpg"/>
+### FOA proposed algorithm location
 
-# Citation
+- FOA implementation file: ./RISE/evaluation.py
+- Core class: JointAdversarialCausalMetric
+- Core method: JointAdversarialCausalMetric.single_run(...)
+- Absolute path on this machine: D:/Adversarial-Robustness-Grad-Eclip/RISE/evaluation.py
 
-If you use the code in your research, please cite:
+## 2) Path convention
+
+- Run commands from repository root.
+- Use relative paths for all inputs/outputs.
+- Keep in mind the folder name is classification_reuslt in this repository.
+
+## 3) Run attack scripts (IOA, DOA, FOA)
+
+Mode mapping:
+
+- del -> DOA
+- ins -> IOA
+- del+ins -> FOA
+
+### 3.1 Single explainer
+
+```powershell
+python .\adv_score.py \
+  --clip-model ViT-B/16 \
+  --clip-checkpoint .\checkpoints\ViT-B-16.pt \
+  --hm-type eclip \
+  --mode del+ins \
+  --img-dir .\images\imagenet-val \
+  --sample-path .\classification_reuslt\imagenet\vit_b_16_1k.json \
+  --output-dir .\outputs\result_16\ImageNet\CLIP_ViTB16\ins_del_optimized_output \
+  --eps 16 \
+  --alpha 4 \
+  --pgd-steps 50 \
+  --process-batch-size 100
 ```
-@inproceedings{chenyang_gradeclip,
-  title={Gradient-based Visual Explanation for CLIP},
-  author={Zhao, Chenyang and Wang, Kun and Zeng, Xingyu and Zhao, Rui and Chan, B. Antoni},
-  booktitle={International Conference on Machine Learning (ICML)},
-  month = {July},
-  year = {2024}
+
+### 3.2 Multiple explainers
+
+```powershell
+foreach ($hm in @("eclip","game","gradcam","maskclip","rise")) {
+  python .\adv_score.py \
+    --clip-model ViT-B/16 \
+    --clip-checkpoint .\checkpoints\ViT-B-16.pt \
+    --hm-type $hm \
+    --mode del+ins \
+    --img-dir .\images\imagenet-val \
+    --sample-path .\classification_reuslt\imagenet\vit_b_16_1k.json \
+    --output-dir .\outputs\result_16\ImageNet\CLIP_ViTB16\ins_del_optimized_output \
+    --eps 16 --alpha 4 --pgd-steps 50 --process-batch-size 100
 }
 ```
 
-# Contact
+## 4) Run ROAD evaluation
 
-If you have any questions, please do not hesitate to contact Chenyang ZHAO (zhaocy2333@gmail.com).
+```powershell
+python .\main_script\ROAD_evaluate_and_export.py \
+  --root-dir .\outputs\result_16 \
+  --clip-checkpoint .\checkpoints\ViT-B-16.pt \
+  --output-root .\outputs\ROAD\eps_16 \
+  --datasets ImageNet CUB StandfordPet \
+  --explainers eclip game gradcam maskclip rise \
+  --approaches ins_del_optimized_output \
+  --model-subdir CLIP_ViTB16
+```
+
+Note: this script currently expects the dataset token StandfordPet.
+
+## 5) Aggregate confidence and export LaTeX table
+
+### 5.1 Build confidence report
+
+```powershell
+python .\script_eval\report_confidence_by_epsilon.py \
+  --results-parent .\outputs \
+  --epsilon-pattern result_* \
+  --model-name CLIP_ViTB16 \
+  --datasets ImageNet CUB StandfordPet \
+  --approaches ins_optimized_output del_optimized_output ins_del_optimized_output
+```
+
+
+## 5 Quick FOA run
+
+```powershell
+python .\adv_score.py \
+  --clip-model ViT-B/16 \
+  --clip-checkpoint .\checkpoints\ViT-B-16.pt \
+  --hm-type eclip \
+  --mode del+ins \
+  --img-dir .\images\imagenet-val \
+  --sample-path .\classification_reuslt\imagenet\vit_b_16_1k.json \
+  --output-dir .\outputs\result_16\ImageNet\CLIP_ViTB16\ins_del_optimized_output \
+  --eps 16 --alpha 4 --pgd-steps 50 --process-batch-size 64
+```
+

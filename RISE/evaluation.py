@@ -234,6 +234,9 @@ class AdversarialCausalMetric(CausalMetric):
             'adv_prob': [],
             'pgd_trace': [],
         }
+        best_x_raw_adv = None
+        best_loss = None
+        best_step = None
 
         if deletion_batch_size is not None:
             process_batch_size = deletion_batch_size
@@ -312,6 +315,15 @@ class AdversarialCausalMetric(CausalMetric):
                 loss = l_del - l_preserve
             elif self.mode == 'ins':
                 loss = l_del + l_preserve
+
+            step_loss = float(loss.item())
+            step_pred_label = int(torch.argmax(adv_logits, dim=1).item())
+            class_preserved = step_pred_label == target_class
+            if class_preserved and (best_loss is None or step_loss < best_loss):
+            # if (best_loss is None or step_loss < best_loss):
+                best_loss = step_loss
+                best_x_raw_adv = x_raw_adv.detach().clone()
+                best_step = k + 1
             
             if delta.grad is not None:
                 delta.grad.zero_()
@@ -325,10 +337,11 @@ class AdversarialCausalMetric(CausalMetric):
                 delta.clamp_(-eps, eps)
             delta = delta.detach().requires_grad_(True)
 
-            details['loss'].append(float(loss.item()))
+            details['loss'].append(step_loss)
             details['pgd_trace'].append({
                 'pgd_step': k + 1,
-                'loss': float(loss.item()),
+                'loss': step_loss,
+                'class_preserved': bool(class_preserved),
                 'p_t': p_t_trace,
             })
 
@@ -339,8 +352,300 @@ class AdversarialCausalMetric(CausalMetric):
                     details['loss'][-1]
                 ))
 
-        x_raw_adv = torch.clamp(x_raw + delta.detach(), clip_min, clip_max)
+        if best_x_raw_adv is None:
+            x_raw_adv = torch.clamp(x_raw + delta.detach(), clip_min, clip_max)
+            selected_step = pgd_steps
+            selected_class_preserved = False
+        else:
+            x_raw_adv = best_x_raw_adv
+            selected_step = best_step
+            selected_class_preserved = True
+
+        details['selected_step'] = int(selected_step)
+        details['selected_class_preserved'] = bool(selected_class_preserved)
+        details['selection_fallback_last_step'] = bool(best_x_raw_adv is None)
+        details['selected_loss'] = float(
+            best_loss
+            if best_loss is not None
+            else details['loss'][-1]
+        )
         details['adv_prob'] = float(self.model(normalize_ImageNet1k(x_raw_adv))[0, target_class].item())
+
+        if return_details:
+            return x_raw_adv, details
+        return x_raw_adv
+
+
+class JointAdversarialCausalMetric(nn.Module):
+    """Optimize deletion and insertion adversarial objectives jointly."""
+
+    def __init__(
+        self,
+        model,
+        raw_model,
+        step,
+        del_substrate_fn,
+        ins_substrate_fn,
+        hm_type,
+        txt_embedding,
+        txts,
+        resize,
+        preprocess,
+    ):
+        super().__init__()
+        self.model = model
+        self.raw_model = raw_model
+        self.step = step
+        self.del_substrate_fn = del_substrate_fn
+        self.ins_substrate_fn = ins_substrate_fn
+        self.hm_type = hm_type
+        self.txt_embedding = txt_embedding
+        self.txts = txts
+        self.resize = resize
+        self.preprocess = preprocess
+
+    def _build_states(self, x_raw_adv, salient_order, run_mode, deletion_steps, device):
+        if run_mode == "del":
+            xt = x_raw_adv
+            finish = self.del_substrate_fn(x_raw_adv)
+        elif run_mode == "ins":
+            xt = self.ins_substrate_fn(x_raw_adv)
+            finish = x_raw_adv
+        else:
+            raise ValueError("run_mode must be 'del' or 'ins'")
+
+        finish_flat = finish.view(1, 3, HW)
+        xt_states = []
+        for t in range(deletion_steps):
+            xt_states.append(xt.clone())
+            start_idx = self.step * t
+            end_idx = min(HW, self.step * (t + 1))
+            if start_idx >= HW:
+                break
+
+            coords = torch.as_tensor(
+                salient_order[0, start_idx:end_idx],
+                device=device,
+                dtype=torch.long,
+            )
+            xt_next = xt.clone()
+            xt_next_flat = xt_next.view(1, 3, HW)
+            xt_next_flat[0, :, coords] = finish_flat[0, :, coords]
+            xt = xt_next
+
+        return xt_states, xt
+
+    def _path_loss(self, x_raw_adv, salient_order, run_mode, target_class, deletion_steps, process_batch_size, device):
+        xt_states, xt_last = self._build_states(x_raw_adv, salient_order, run_mode, deletion_steps, device)
+
+        curr_batch_size = process_batch_size
+        if curr_batch_size is None or curr_batch_size < 1:
+            curr_batch_size = len(xt_states)
+
+        loss_val = torch.zeros(1, device=device)
+        p_t_trace = []
+        for start_idx in range(0, len(xt_states), curr_batch_size):
+            end_idx = min(len(xt_states), start_idx + curr_batch_size)
+            xt_batch = torch.cat(xt_states[start_idx:end_idx], dim=0)
+            logits_batch = self.model(normalize_ImageNet1k(xt_batch))
+            p_t_batch = logits_batch[:, target_class]
+            loss_val = loss_val + p_t_batch.sum()
+            p_t_trace.extend([float(v) for v in p_t_batch.detach().cpu().tolist()])
+
+        logits_last = self.model(normalize_ImageNet1k(xt_last))
+        loss_val += logits_last[:, target_class]
+        loss_val = loss_val / deletion_steps
+        return loss_val, p_t_trace
+
+    def single_run(
+        self,
+        img_raw,
+        explanation_fn,
+        target_class=None,
+        eps=32.0 / 255.0,
+        alpha=4.0 / 255.0,
+        pgd_steps=100,
+        deletion_steps=100,
+        process_batch_size=32,
+        deletion_batch_size=None,
+        clip_min=0.0,
+        clip_max=1.0,
+        return_details=True,
+        verbose=0,
+    ):
+        if img_raw.shape[0] != 1:
+            raise ValueError("JointAdversarialCausalMetric.single_run expects batch size 1.")
+
+        try:
+            device = next(self.model.parameters()).device
+        except StopIteration:
+            device = img_raw.device
+
+        x_raw = img_raw.detach().to(device)
+        with torch.no_grad():
+            clean_logits = self.model(normalize_ImageNet1k(x_raw))
+            if target_class is None:
+                target_class = int(torch.argmax(clean_logits, dim=1).item())
+
+        delta = torch.zeros_like(x_raw, requires_grad=True)
+        deletion_steps = (HW + self.step - 1) // self.step
+        deletion_steps = int(max(1, deletion_steps))
+
+        if deletion_batch_size is not None:
+            process_batch_size = deletion_batch_size
+
+        details = {
+            "loss": [],
+            "clean_prob": float(clean_logits[0, target_class].item()),
+            "adv_prob": [],
+            "pgd_trace": [],
+        }
+        best_x_raw_adv = None
+        best_loss = None
+        best_step = None
+
+        for k in range(pgd_steps):
+            x_raw_adv = torch.clamp(x_raw + delta, clip_min, clip_max)
+            x_adv_normalized = normalize_ImageNet1k(x_raw_adv)
+            adv_logits = self.model(x_adv_normalized)
+            l_preserve = F.kl_div(adv_logits, clean_logits, reduction="batchmean")
+
+            saliency = explanation_fn(
+                self.raw_model,
+                self.hm_type,
+                x_adv_normalized,
+                self.txt_embedding,
+                self.txts,
+                self.resize,
+                self.preprocess,
+            )
+            if isinstance(saliency, torch.Tensor):
+                saliency = saliency.detach().cpu().numpy()
+            saliency = np.asarray(saliency)
+            salient_order = np.flip(np.argsort(saliency.reshape(-1, HW), axis=1), axis=-1).copy()
+
+            l_del, p_t_trace_del = self._path_loss(
+                x_raw_adv,
+                salient_order,
+                "del",
+                target_class,
+                deletion_steps,
+                process_batch_size,
+                device,
+            )
+            l_ins, p_t_trace_ins = self._path_loss(
+                x_raw_adv,
+                salient_order,
+                "ins",
+                target_class,
+                deletion_steps,
+                process_batch_size,
+                device,
+            )
+
+            objective_del = l_del - l_preserve
+            objective_ins = -(l_ins + l_preserve) # twice the weight of l_preserve
+            # objective_ins = -l_ins
+            loss = objective_del + objective_ins
+
+            grad_del = torch.autograd.grad(objective_del, delta, retain_graph=True, allow_unused=True)[0]
+            grad_ins = torch.autograd.grad(objective_ins, delta, retain_graph=True, allow_unused=True)[0]
+            if grad_del is None or grad_ins is None:
+                grad_cosine = float("nan")
+                grad_dot = float("nan")
+                grad_norm_del = float("nan")
+                grad_norm_ins = float("nan")
+                grad_norm_total = float("nan")
+                grad_cancellation_ratio = float("nan")
+            else:
+                grad_del_flat = grad_del.reshape(-1)
+                grad_ins_flat = grad_ins.reshape(-1)
+                grad_dot_tensor = torch.dot(grad_del_flat, grad_ins_flat)
+                grad_norm_del_tensor = torch.norm(grad_del_flat, p=2)
+                grad_norm_ins_tensor = torch.norm(grad_ins_flat, p=2)
+                grad_norm_total_tensor = torch.norm((grad_del_flat + grad_ins_flat), p=2)
+
+                denom = grad_norm_del_tensor * grad_norm_ins_tensor
+                if float(denom.item()) <= 1e-12:
+                    grad_cosine = float("nan")
+                else:
+                    grad_cosine = float((grad_dot_tensor / denom).item())
+
+                grad_dot = float(grad_dot_tensor.item())
+                grad_norm_del = float(grad_norm_del_tensor.item())
+                grad_norm_ins = float(grad_norm_ins_tensor.item())
+                grad_norm_total = float(grad_norm_total_tensor.item())
+                grad_cancellation_ratio = float(
+                    grad_norm_total_tensor.item() / (grad_norm_del + grad_norm_ins + 1e-12)
+                )
+
+            step_loss = float(loss.item())
+            step_pred_label = int(torch.argmax(adv_logits, dim=1).item())
+            class_preserved = step_pred_label == target_class
+            if class_preserved and (best_loss is None or step_loss < best_loss):
+                best_loss = step_loss
+                best_x_raw_adv = x_raw_adv.detach().clone()
+                best_step = k + 1
+
+            if delta.grad is not None:
+                delta.grad.zero_()
+            loss.backward()
+
+            with torch.no_grad():
+                delta += alpha * delta.grad.sign()
+                delta.clamp_(-eps, eps)
+            delta = delta.detach().requires_grad_(True)
+
+            details["loss"].append(step_loss)
+            details["pgd_trace"].append(
+                {
+                    "pgd_step": k + 1,
+                    "loss": step_loss,
+                    "loss_del": float(l_del.item()),
+                    "loss_ins": float(l_ins.item()),
+                    "grad_cosine_l1_l2": grad_cosine,
+                    "grad_dot_l1_l2": grad_dot,
+                    "grad_norm_l1": grad_norm_del,
+                    "grad_norm_l2": grad_norm_ins,
+                    "grad_norm_l1_plus_l2": grad_norm_total,
+                    "grad_cancellation_ratio": grad_cancellation_ratio,
+                    "class_preserved": bool(class_preserved),
+                    "p_t": {
+                        "del": p_t_trace_del,
+                        "ins": p_t_trace_ins,
+                    },
+                }
+            )
+
+            if verbose:
+                print(
+                    "PGD {}/{} | L={:.6f} | L_del={:.6f} | L_ins={:.6f}".format(
+                        k + 1,
+                        pgd_steps,
+                        details["loss"][-1],
+                        float(l_del.item()),
+                        float(l_ins.item()),
+                    )
+                )
+
+        if best_x_raw_adv is None:
+            x_raw_adv = torch.clamp(x_raw + delta.detach(), clip_min, clip_max)
+            selected_step = pgd_steps
+            selected_class_preserved = False
+        else:
+            x_raw_adv = best_x_raw_adv
+            selected_step = best_step
+            selected_class_preserved = True
+
+        details["selected_step"] = int(selected_step)
+        details["selected_class_preserved"] = bool(selected_class_preserved)
+        details["selection_fallback_last_step"] = bool(best_x_raw_adv is None)
+        details["selected_loss"] = float(
+            best_loss
+            if best_loss is not None
+            else details["loss"][-1]
+        )
+        details["adv_prob"] = float(self.model(normalize_ImageNet1k(x_raw_adv))[0, target_class].item())
 
         if return_details:
             return x_raw_adv, details
