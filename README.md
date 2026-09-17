@@ -79,18 +79,6 @@ python .\main_script\ROAD_evaluate_and_export.py \
 
 Note: this script currently expects the dataset token StandfordPet.
 
-## 5) Aggregate confidence and export LaTeX table
-
-### 5.1 Build confidence report
-
-```powershell
-python .\script_eval\report_confidence_by_epsilon.py \
-  --results-parent .\outputs \
-  --epsilon-pattern result_* \
-  --model-name CLIP_ViTB16 \
-  --datasets ImageNet CUB StandfordPet \
-  --approaches ins_optimized_output del_optimized_output ins_del_optimized_output
-```
 
 
 ## 5 Quick FOA run
