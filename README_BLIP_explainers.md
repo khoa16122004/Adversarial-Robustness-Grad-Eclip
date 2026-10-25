@@ -58,6 +58,24 @@ python .\test_blip_explainers.py --image "D:\path\to\example.jpg" `
 
 ## Adaptation and score target
 
+### Linux / Slurm launcher
+
+Run `script_sh/test_blip.sh` from the server repository. It explicitly passes
+the server BLIP source, checkpoint, and output paths, without using Windows
+defaults. The default checkpoint is `blip_checkpoint.pth` at the server repo
+root; change it via `CHECKPOINT`. Results default to
+`BLIP_faithfulness/results_<job-id>` inside that repo.
+Create the Slurm log directory before submission:
+
+```bash
+mkdir -p BLIP_faithfulness
+CHECKPOINT="/path/to/BLIP.pth" OUTPUT_DIR="/path/to/results" sbatch script_sh/test_blip.sh
+```
+
+The launcher retains the 32-mask RISE smoke test; increase it for quality checks.
+
+### Methods
+
 - All methods explain the same **image-text contrastive cosine (ITC)** for one
   caption, not the multimodal ITM classification head.
 - Default `--last-heads 1` follows `gradeclip_adaptation_blip.ipynb`: preceding
