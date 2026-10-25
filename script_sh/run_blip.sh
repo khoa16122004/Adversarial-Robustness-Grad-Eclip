@@ -40,7 +40,6 @@ if [[ ! -d "$img_dir" ]]; then
   printf 'Image directory not found: %s\nSet IMG_DIR to the server dataset path.\n' "$img_dir" >&2
   exit 1
 fi
-command -v zip >/dev/null || { printf 'zip is required to archive the results.\n' >&2; exit 1; }
 
 python - <<'PY'
 from importlib.metadata import version
@@ -95,10 +94,17 @@ for hm in "${hm_types[@]}"; do
   done
 done
 
-# Archive only after all 15 runs succeed; keep paths relative inside the zip.
+# Archive only after all runs succeed; keep paths relative inside the zip.
 archive="${output_root}.zip"
-(
-  cd -- "$(dirname -- "$output_root")"
-  zip -r "$archive" "$(basename -- "$output_root")"
+python - "$output_root" <<'PY'
+from pathlib import Path
+import shutil
+import sys
+
+output = Path(sys.argv[1])
+archive = shutil.make_archive(
+    str(output), "zip", root_dir=str(output.parent), base_dir=output.name,
 )
+print(f"Created archive: {archive}")
+PY
 printf '\nBLIP sweep complete. Results: %s\nArchive: %s\n' "$output_root" "$archive"

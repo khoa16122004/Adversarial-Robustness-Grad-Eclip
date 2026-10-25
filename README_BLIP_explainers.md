@@ -318,7 +318,8 @@ Outputs default to
 under the server repository.
 The launcher avoids adding `<hm>` twice since the Python runner already adds it.
 After all runs succeed it creates
-`BLIP_faithfulness/attack_<job-id>.zip`. It stops on the first error
+`BLIP_faithfulness/attack_<job-id>.zip` using Python's standard-library
+`shutil.make_archive` (no system `zip` command is needed). It stops on the first error
 and does not report a partial sweep as completed. No dependencies are installed
 automatically. Check the environment instructions above before launching; the
 script checks Transformers helper imports and CUDA availability.
