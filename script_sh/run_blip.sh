@@ -3,7 +3,7 @@
 #SBATCH --output=BLIP_faithfulness/attack_%j.out
 #SBATCH --error=BLIP_faithfulness/attack_%j.err
 #SBATCH --account=uit
-#SBATCH --partition=normal
+#SBATCH --partition=large
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=4G
