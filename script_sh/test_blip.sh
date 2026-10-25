@@ -14,7 +14,7 @@
 nvidia-smi -L
 
 
-source /datastore/khoatn/miniconda3/etc/profile.d/conda.sh
+source /datastore/khangtd/miniconda3/etc/profile.d/conda.sh
 conda activate Sparse_Attack
 cd /datastore/khangtd/Adversarial-Robustness-Grad-Eclip || exit 1
 export SSL_CERT_FILE="$(python -c 'import certifi; print(certifi.where())')"
