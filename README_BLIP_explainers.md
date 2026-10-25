@@ -26,6 +26,13 @@ No packages or weights are installed/downloaded by this runner explicitly.
 BLIP's tokenizer initialization may download `bert-base-uncased` on first use;
 pre-cache it when running offline. Do not use untrusted checkpoints.
 
+`BLIP/models/med.py` imports the chunking/pruning helpers from
+`transformers.pytorch_utils`, with a legacy fallback for Transformers 4.15.
+If the server reports that `apply_chunking_to_forward` cannot be imported from
+`transformers.modeling_utils`, update this BLIP source file along with the runner.
+This import fix does not certify compatibility with every newer Transformers
+release; full model execution still needs validation in the server environment.
+
 The local checkpoint must have BLIP ITC weights (`visual_encoder`, `text_encoder`,
 `vision_proj`, `text_proj`). Momentum/queue and other unused checkpoint keys are
 reported but permitted. Missing ITC weights or incompatible shapes fail loudly.

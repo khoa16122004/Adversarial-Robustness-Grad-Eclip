@@ -36,12 +36,22 @@ from transformers.modeling_outputs import (
     SequenceClassifierOutput,
     TokenClassifierOutput,
 )
-from transformers.modeling_utils import (
-    PreTrainedModel,
-    apply_chunking_to_forward,
-    find_pruneable_heads_and_indices,
-    prune_linear_layer,
-)
+from transformers.modeling_utils import PreTrainedModel
+try:
+    from transformers.pytorch_utils import (
+        apply_chunking_to_forward,
+        find_pruneable_heads_and_indices,
+        prune_linear_layer,
+    )
+except ModuleNotFoundError as exc:
+    if exc.name != "transformers.pytorch_utils":
+        raise
+    # Transformers 4.15 (the original BLIP dependency) predates pytorch_utils.
+    from transformers.modeling_utils import (
+        apply_chunking_to_forward,
+        find_pruneable_heads_and_indices,
+        prune_linear_layer,
+    )
 from transformers.utils import logging
 from transformers.models.bert.configuration_bert import BertConfig
 
