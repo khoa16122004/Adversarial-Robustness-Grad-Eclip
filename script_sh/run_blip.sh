@@ -66,7 +66,7 @@ export SSL_CERT_FILE="$(python -c 'import certifi; print(certifi.where())')"
 export REQUESTS_CA_BUNDLE="$SSL_CERT_FILE"
 
 hm_types=(eclip game gradcam maskclip rise)
-epsilons=(2 4 8)
+epsilons=(2 4 8 16)
 
 mkdir -p "$output_root"
 output_root="$(cd -- "$output_root" && pwd)"
