@@ -22,7 +22,7 @@ checkpoint="${CHECKPOINT:-$repo_root/blip_checkpoint.pth}"
 img_dir="${IMG_DIR:-/datastore/quanphm/datasets/ImageNet/val}"
 sample_path="${SAMPLE_PATH:-$repo_root/classification_reuslt/imagenet/vit_b_16_100.json}"
 output_root="${OUTPUT_DIR:-$repo_root/BLIP_faithfulness/attack_${SLURM_JOB_ID:-local}}"
-process_batch_size="${PROCESS_BATCH_SIZE:-50}"
+process_batch_size="${PROCESS_BATCH_SIZE:-32}"
 rise_masks="${RISE_MASKS:-2000}"
 rise_batch_size="${RISE_BATCH_SIZE:-50}"
 last_heads="${LAST_HEADS:-1}"
@@ -51,7 +51,7 @@ for hm in "${hm_types[@]}"; do
       --device cuda \
       --last-heads "$last_heads" \
       --hm-type "$hm" \
-      --mode del+ins \
+      --mode ins \
       --img-dir "$img_dir" \
       --sample-path "$sample_path" \
       --output-dir "$output_root/eps_$epsilon" \
