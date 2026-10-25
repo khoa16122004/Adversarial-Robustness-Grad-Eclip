@@ -4,15 +4,12 @@ import os
 from pathlib import Path
 import torch
 import torch.nn as nn
-import Game_MM_CLIP.clip as mm_clip
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
 from PIL import Image
 
 import torch.nn.functional as F
-from clip_utils import build_zero_shot_classifier
-from generate_emap import CLIPExplainRunner
 from imagenet_metadata import IMAGENET_CLASSNAMES, OPENAI_IMAGENET_TEMPLATES
 
 
@@ -119,6 +116,8 @@ def build_zero_shot_clip_classifier(
     num_classes_per_batch=10,
     use_tqdm=True,
 ):
+    from clip_utils import build_zero_shot_classifier
+
     if classnames is None:
         classnames = IMAGENET_CLASSNAMES
 
@@ -172,6 +171,8 @@ def build_blur_substrate(gkern_or_kernel_size=11, kernel_size=11, kernel_sigma=5
 
 
 def _get_explainer(clipmodel, preprocess):
+    from generate_emap import CLIPExplainRunner
+
     cache_key = id(clipmodel)
     if cache_key not in _EXPLAINER_CACHE:
         _EXPLAINER_CACHE[cache_key] = CLIPExplainRunner(
@@ -452,4 +453,3 @@ def normalize_ImageNet1k(x):
         
 
  
-

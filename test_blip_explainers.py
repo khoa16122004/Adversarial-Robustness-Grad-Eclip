@@ -38,7 +38,7 @@ def parse_args():
     parser.add_argument("--rise-masks", type=int, default=2000)
     parser.add_argument("--rise-grid", type=int, default=8)
     parser.add_argument("--rise-prob", type=float, default=0.5)
-    parser.add_argument("--batch-size", type=int, default=16, help="RISE batch size.")
+    parser.add_argument("--batch-size", type=int, default=50, help="RISE batch size.")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
     for name in ("image", "checkpoint"):

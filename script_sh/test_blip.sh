@@ -17,6 +17,27 @@ nvidia-smi -L
 source /datastore/khangtd/miniconda3/etc/profile.d/conda.sh
 conda activate Sparse_Attack
 cd /datastore/khangtd/Adversarial-Robustness-Grad-Eclip || exit 1
+python - <<'PY' || exit 1
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    installed = version("transformers")
+except PackageNotFoundError:
+    installed = "not installed"
+if installed != "4.26.1":
+    raise SystemExit(
+        f"BLIP requires transformers==4.26.1; found {installed}.\n"
+        "In the active conda environment, run:\n"
+        "  python -m pip install -r requirements_blip_compat.txt\n"
+        "Then resubmit this job."
+    )
+from transformers.pytorch_utils import (
+    apply_chunking_to_forward,
+    find_pruneable_heads_and_indices,
+    prune_linear_layer,
+)
+print(f"BLIP Transformers helper check passed ({installed}).")
+PY
 export SSL_CERT_FILE="$(python -c 'import certifi; print(certifi.where())')"
 export REQUESTS_CA_BUNDLE="$SSL_CERT_FILE"
 export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps-job$SLURM_JOB_ID
