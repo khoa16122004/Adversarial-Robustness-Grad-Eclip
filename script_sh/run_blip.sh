@@ -20,7 +20,7 @@ repo_root="$PWD"
 
 checkpoint="${CHECKPOINT:-$repo_root/blip_checkpoint.pth}"
 img_dir="${IMG_DIR:-/datastore/quanphm/datasets/ImageNet/val}"
-sample_path="${SAMPLE_PATH:-$repo_root/classification_reuslt/pet/vit_b_16_100_random_50.json}"
+sample_path="${SAMPLE_PATH:-$repo_root/classification_reuslt/imagenet/vit_b_16_100.json}"
 output_root="${OUTPUT_DIR:-$repo_root/BLIP_faithfulness/attack_${SLURM_JOB_ID:-local}}"
 process_batch_size="${PROCESS_BATCH_SIZE:-100}"
 rise_masks="${RISE_MASKS:-2000}"
@@ -30,37 +30,7 @@ last_heads="${LAST_HEADS:-1}"
 export MPLBACKEND=Agg
 export PYTHONUNBUFFERED=1
 
-for file in "$checkpoint" "$sample_path" "$repo_root/adv_score_BLIP.py" "$repo_root/BLIP/models/blip_itm.py"; do
-  if [[ ! -f "$file" ]]; then
-    printf 'Required file not found: %s\nSet CHECKPOINT or SAMPLE_PATH to the server path as needed.\n' "$file" >&2
-    exit 1
-  fi
-done
-if [[ ! -d "$img_dir" ]]; then
-  printf 'Image directory not found: %s\nSet IMG_DIR to the server dataset path.\n' "$img_dir" >&2
-  exit 1
-fi
 
-python - <<'PY'
-from importlib.metadata import version
-
-installed = version("transformers")
-if installed != "4.26.1":
-    raise SystemExit(
-        f"BLIP requires transformers==4.26.1; found {installed}.\n"
-        "Run: python -m pip install -r requirements_blip_compat.txt"
-    )
-from transformers.pytorch_utils import (
-    apply_chunking_to_forward,
-    find_pruneable_heads_and_indices,
-    prune_linear_layer,
-)
-import torch
-
-if not torch.cuda.is_available():
-    raise SystemExit("CUDA is unavailable; check the Slurm GPU allocation and PyTorch environment.")
-print(f"BLIP preflight OK: transformers={installed}, GPU={torch.cuda.get_device_name(0)}")
-PY
 export SSL_CERT_FILE="$(python -c 'import certifi; print(certifi.where())')"
 export REQUESTS_CA_BUNDLE="$SSL_CERT_FILE"
 
@@ -94,17 +64,10 @@ for hm in "${hm_types[@]}"; do
   done
 done
 
-# Archive only after all runs succeed; keep paths relative inside the zip.
+# Archive only after all 15 runs succeed; keep paths relative inside the zip.
 archive="${output_root}.zip"
-python - "$output_root" <<'PY'
-from pathlib import Path
-import shutil
-import sys
-
-output = Path(sys.argv[1])
-archive = shutil.make_archive(
-    str(output), "zip", root_dir=str(output.parent), base_dir=output.name,
+(
+  cd -- "$(dirname -- "$output_root")"
+  zip -r "$archive" "$(basename -- "$output_root")"
 )
-print(f"Created archive: {archive}")
-PY
 printf '\nBLIP sweep complete. Results: %s\nArchive: %s\n' "$output_root" "$archive"
