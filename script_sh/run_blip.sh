@@ -19,7 +19,7 @@ cd /datastore/khangtd/Adversarial-Robustness-Grad-Eclip || exit 1
 repo_root="$PWD"
 
 checkpoint="${CHECKPOINT:-$repo_root/blip_checkpoint.pth}"
-img_dir="${IMG_DIR:?Set IMG_DIR to the Stanford Dogs Images directory on this server}"
+img_dir="${IMG_DIR:-/datastore/quanphm/datasets/ImageNet/val}"
 sample_path="${SAMPLE_PATH:-$repo_root/classification_reuslt/pet/vit_b_16_100_random_50.json}"
 output_root="${OUTPUT_DIR:-$repo_root/BLIP_faithfulness/attack_${SLURM_JOB_ID:-local}}"
 process_batch_size="${PROCESS_BATCH_SIZE:-100}"

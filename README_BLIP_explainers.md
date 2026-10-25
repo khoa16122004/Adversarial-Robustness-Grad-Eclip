@@ -292,11 +292,11 @@ submission):
 
 ```bash
 mkdir -p BLIP_faithfulness
-IMG_DIR="/path/to/stanford-dogs/Images" sbatch script_sh/run_blip.sh
+sbatch script_sh/run_blip.sh
 ```
 
-Set `IMG_DIR` to the actual Stanford Dogs directory on the server; no Kaggle
-dataset path is assumed. The checkpoint defaults to `blip_checkpoint.pth` in the
+The default `IMG_DIR` is `/datastore/quanphm/datasets/ImageNet/val`; override
+`IMG_DIR` to evaluate another dataset. The checkpoint defaults to `blip_checkpoint.pth` in the
 server repository root, as in `test_blip.sh`; override with `CHECKPOINT`.
 The sample JSON is `classification_reuslt/pet/vit_b_16_100_random_50.json`.
 This JSON selects images originally selected with CLIP; it does not imply
