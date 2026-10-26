@@ -26,6 +26,7 @@ class BLIPClassificationTests(unittest.TestCase):
             (data_dir / "n0").mkdir(parents=True)
             (data_dir / "n1").mkdir()
             Image.new("RGB", (8, 8)).save(data_dir / "n0" / "first.png")
+            Image.new("RGB", (8, 8)).save(data_dir / "n0" / "second.png")
             Image.new("RGB", (8, 8)).save(data_dir / "n1" / "second.png")
 
             index_path = root / "labels.json"
@@ -67,11 +68,13 @@ class BLIPClassificationTests(unittest.TestCase):
                 classify.main()
 
             samples = json.loads(samples_path.read_text(encoding="utf-8"))
-            self.assertEqual(samples, {"n0": "n0/first.png"})
+            self.assertEqual(len(samples), 1)
+            self.assertIn(samples["n0"], {"n0/first.png", "n0/second.png"})
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
             self.assertEqual(summary["model"], "BLIP-ViT-base")
-            self.assertEqual(summary["num_correct"], 1)
-            self.assertEqual(summary["num_total_processed"], 1)
+            self.assertEqual(summary["num_correct"], 2)
+            self.assertEqual(summary["num_total_processed"], 3)
+            self.assertEqual(summary["accuracy"], 2 / 3)
 
 
 if __name__ == "__main__":

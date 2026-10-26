@@ -23,7 +23,7 @@ img_dir="${IMG_DIR:-/datastore/quanphm/datasets/ImageNet/val}"
 index_json="${INDEX_JSON:-$repo_root/imgnet1k_label.json}"
 num_samples="${NUM_SAMPLES:-100}"
 batch_size="${BATCH_SIZE:-32}"
-last_heads="${LAST_HEADS:-1}"
+last_heads="${LAST_HEADS:-native}"
 output_dir="${OUTPUT_DIR:-$repo_root/classification_reuslt/imagenet}"
 
 export MPLBACKEND=Agg

@@ -306,7 +306,14 @@ by default, just as in the supplied CLIP command (no automatic switch to a
 
 To classify the dataset with BLIP and create an attack input containing 100
 BLIP-correct images, run `classify.py` with `--model blip` and
-`--sample-output`. The summary JSON and attack sample JSON are separate:
+`--sample-output`. Classification runs over the full dataset (or `--max-images`
+if supplied) before computing accuracy and selecting the attack samples. The
+sample JSON randomly selects at most one correct image per class so its keys
+are class-folder names and values are `folder/filename` paths. Use `--seed` for
+reproducible selection. The default classifier keeps BLIP's native final
+attention; `--blip-last-heads 1` changes the pretrained forward pass and should
+only be used when that modified model is intended. The summary JSON and attack
+sample JSON are separate:
 
 ```bash
 python classify.py \

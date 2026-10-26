@@ -45,7 +45,7 @@ def main():
     )
     parser.add_argument("--max-images", type=int, default=None, help="Optional cap on number of images")
     parser.add_argument("--max-correct-samples", type=int, default=None,
-                        help="Stop after this many correctly classified samples")
+                        help="Randomly select up to this many correctly classified samples for sample output")
     parser.add_argument(
         "--seed",
         type=int,
@@ -81,8 +81,8 @@ def main():
                         help="BLIP checkpoint path (used with --model blip)")
     parser.add_argument("--vit", choices=("base", "large"), default="base",
                         help="BLIP visual encoder size")
-    parser.add_argument("--blip-last-heads", choices=("1", "native"), default="1",
-                        help="BLIP final attention mode")
+    parser.add_argument("--blip-last-heads", choices=("1", "native"), default="native",
+                        help="BLIP final attention mode (use native for pretrained classification)")
     parser.add_argument("--device", default=None, help="cuda or cpu")
     args = parser.parse_args()
 
@@ -99,9 +99,6 @@ def main():
     image_items = collect_image_items(args.data_path, folder_to_label, max_images=args.max_images)
     if not image_items:
         raise ValueError("No image found for classification.")
-    if (args.model == "blip" and args.max_correct_samples is not None
-            and args.sample_output):
-        random.Random(args.seed).shuffle(image_items)
 
     if args.classnames_path:
         classnames = load_classnames(args.classnames_path)
@@ -112,6 +109,9 @@ def main():
                 "Cannot infer class names from --index-json. "
                 "Please provide --classnames-path or include class_name in mapping json."
             )
+
+    if args.model == "blip":
+        classnames = [name.replace("_", " ") for name in classnames]
 
     max_gt_label = max(folder_to_label.values())
     if max_gt_label >= len(classnames):
@@ -210,12 +210,6 @@ def main():
                             "confidence": confidence,
                         }
                     )
-                    if (args.max_correct_samples is not None
-                            and num_correct >= args.max_correct_samples):
-                        break
-            if (args.max_correct_samples is not None
-                    and num_correct >= args.max_correct_samples):
-                break
 
     output_dir = os.path.dirname(args.output)
     if output_dir:
@@ -241,8 +235,21 @@ def main():
     if args.sample_output:
         sample_output = Path(args.sample_output)
         sample_output.parent.mkdir(parents=True, exist_ok=True)
+        samples_to_write = correct_samples
+        if args.max_correct_samples is not None:
+            rng = random.Random(args.seed)
+            samples_by_wnid = {}
+            shuffled_correct_samples = correct_samples.copy()
+            rng.shuffle(shuffled_correct_samples)
+            for sample in shuffled_correct_samples:
+                samples_by_wnid.setdefault(sample["wnid"], sample)
+            class_samples = list(samples_by_wnid.values())
+            samples_to_write = rng.sample(
+                class_samples, min(args.max_correct_samples, len(class_samples))
+            )
+
         sample_payload = {}
-        for sample in correct_samples:
+        for sample in samples_to_write:
             sample_id = sample["wnid"]
             suffix = 2
             while sample_id in sample_payload:
