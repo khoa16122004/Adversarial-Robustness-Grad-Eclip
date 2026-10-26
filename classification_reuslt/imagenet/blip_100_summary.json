@@ -1,0 +1,714 @@
+{
+  "model": "BLIP-ViT-base",
+  "device": "cuda",
+  "data_path": "/datastore/quanphm/datasets/ImageNet/val",
+  "index_json": "/datastore/khangtd/Adversarial-Robustness-Grad-Eclip/imgnet1k_label.json",
+  "num_classes": 1000,
+  "max_images": null,
+  "batch_size": 32,
+  "num_total_processed": 1166,
+  "num_correct": 100,
+  "accuracy": 0.08576329331046312,
+  "correct_samples": [
+    {
+      "image_path": "n03637318/ILSVRC2012_val_00035854.JPEG",
+      "wnid": "n03637318",
+      "gt_label": 619,
+      "pred_label": 619,
+      "confidence": 0.6628955602645874
+    },
+    {
+      "image_path": "n01806567/ILSVRC2012_val_00037852.JPEG",
+      "wnid": "n01806567",
+      "gt_label": 85,
+      "pred_label": 85,
+      "confidence": 0.5968695878982544
+    },
+    {
+      "image_path": "n02009912/ILSVRC2012_val_00011369.JPEG",
+      "wnid": "n02009912",
+      "gt_label": 132,
+      "pred_label": 132,
+      "confidence": 0.5531109571456909
+    },
+    {
+      "image_path": "n04548280/ILSVRC2012_val_00017368.JPEG",
+      "wnid": "n04548280",
+      "gt_label": 892,
+      "pred_label": 892,
+      "confidence": 0.8306156396865845
+    },
+    {
+      "image_path": "n02906734/ILSVRC2012_val_00047904.JPEG",
+      "wnid": "n02906734",
+      "gt_label": 462,
+      "pred_label": 462,
+      "confidence": 0.9996722936630249
+    },
+    {
+      "image_path": "n02206856/ILSVRC2012_val_00003030.JPEG",
+      "wnid": "n02206856",
+      "gt_label": 309,
+      "pred_label": 309,
+      "confidence": 0.999482274055481
+    },
+    {
+      "image_path": "n03393912/ILSVRC2012_val_00002595.JPEG",
+      "wnid": "n03393912",
+      "gt_label": 565,
+      "pred_label": 565,
+      "confidence": 0.4446360170841217
+    },
+    {
+      "image_path": "n02930766/ILSVRC2012_val_00004197.JPEG",
+      "wnid": "n02930766",
+      "gt_label": 468,
+      "pred_label": 468,
+      "confidence": 0.23515017330646515
+    },
+    {
+      "image_path": "n02802426/ILSVRC2012_val_00046810.JPEG",
+      "wnid": "n02802426",
+      "gt_label": 430,
+      "pred_label": 430,
+      "confidence": 0.9999948740005493
+    },
+    {
+      "image_path": "n02727426/ILSVRC2012_val_00017703.JPEG",
+      "wnid": "n02727426",
+      "gt_label": 410,
+      "pred_label": 410,
+      "confidence": 0.597539484500885
+    },
+    {
+      "image_path": "n01855672/ILSVRC2012_val_00009841.JPEG",
+      "wnid": "n01855672",
+      "gt_label": 99,
+      "pred_label": 99,
+      "confidence": 0.7030963897705078
+    },
+    {
+      "image_path": "n02776631/ILSVRC2012_val_00002641.JPEG",
+      "wnid": "n02776631",
+      "gt_label": 415,
+      "pred_label": 415,
+      "confidence": 0.9949705004692078
+    },
+    {
+      "image_path": "n04153751/ILSVRC2012_val_00008426.JPEG",
+      "wnid": "n04153751",
+      "gt_label": 783,
+      "pred_label": 783,
+      "confidence": 0.9497687220573425
+    },
+    {
+      "image_path": "n04532670/ILSVRC2012_val_00041695.JPEG",
+      "wnid": "n04532670",
+      "gt_label": 888,
+      "pred_label": 888,
+      "confidence": 0.9961263537406921
+    },
+    {
+      "image_path": "n02480855/ILSVRC2012_val_00038024.JPEG",
+      "wnid": "n02480855",
+      "gt_label": 366,
+      "pred_label": 366,
+      "confidence": 0.3732922673225403
+    },
+    {
+      "image_path": "n02804414/ILSVRC2012_val_00033077.JPEG",
+      "wnid": "n02804414",
+      "gt_label": 431,
+      "pred_label": 431,
+      "confidence": 0.7955594658851624
+    },
+    {
+      "image_path": "n03680355/ILSVRC2012_val_00020303.JPEG",
+      "wnid": "n03680355",
+      "gt_label": 630,
+      "pred_label": 630,
+      "confidence": 0.8796877264976501
+    },
+    {
+      "image_path": "n02002556/ILSVRC2012_val_00008411.JPEG",
+      "wnid": "n02002556",
+      "gt_label": 127,
+      "pred_label": 127,
+      "confidence": 0.7745603322982788
+    },
+    {
+      "image_path": "n03457902/ILSVRC2012_val_00022019.JPEG",
+      "wnid": "n03457902",
+      "gt_label": 580,
+      "pred_label": 580,
+      "confidence": 0.48833733797073364
+    },
+    {
+      "image_path": "n01693334/ILSVRC2012_val_00043214.JPEG",
+      "wnid": "n01693334",
+      "gt_label": 46,
+      "pred_label": 46,
+      "confidence": 0.9561822414398193
+    },
+    {
+      "image_path": "n03792972/ILSVRC2012_val_00016419.JPEG",
+      "wnid": "n03792972",
+      "gt_label": 672,
+      "pred_label": 672,
+      "confidence": 0.9722865223884583
+    },
+    {
+      "image_path": "n01443537/ILSVRC2012_val_00032258.JPEG",
+      "wnid": "n01443537",
+      "gt_label": 1,
+      "pred_label": 1,
+      "confidence": 0.9914276599884033
+    },
+    {
+      "image_path": "n02074367/ILSVRC2012_val_00038110.JPEG",
+      "wnid": "n02074367",
+      "gt_label": 149,
+      "pred_label": 149,
+      "confidence": 0.332150936126709
+    },
+    {
+      "image_path": "n04370456/ILSVRC2012_val_00046396.JPEG",
+      "wnid": "n04370456",
+      "gt_label": 841,
+      "pred_label": 841,
+      "confidence": 0.8763468861579895
+    },
+    {
+      "image_path": "n01484850/ILSVRC2012_val_00015157.JPEG",
+      "wnid": "n01484850",
+      "gt_label": 2,
+      "pred_label": 2,
+      "confidence": 0.9451966285705566
+    },
+    {
+      "image_path": "n02138441/ILSVRC2012_val_00043148.JPEG",
+      "wnid": "n02138441",
+      "gt_label": 299,
+      "pred_label": 299,
+      "confidence": 0.9970297813415527
+    },
+    {
+      "image_path": "n03100240/ILSVRC2012_val_00046196.JPEG",
+      "wnid": "n03100240",
+      "gt_label": 511,
+      "pred_label": 511,
+      "confidence": 0.545395016670227
+    },
+    {
+      "image_path": "n03445924/ILSVRC2012_val_00010247.JPEG",
+      "wnid": "n03445924",
+      "gt_label": 575,
+      "pred_label": 575,
+      "confidence": 0.9658388495445251
+    },
+    {
+      "image_path": "n03970156/ILSVRC2012_val_00036020.JPEG",
+      "wnid": "n03970156",
+      "gt_label": 731,
+      "pred_label": 731,
+      "confidence": 0.8991353511810303
+    },
+    {
+      "image_path": "n04118538/ILSVRC2012_val_00004829.JPEG",
+      "wnid": "n04118538",
+      "gt_label": 768,
+      "pred_label": 768,
+      "confidence": 0.9698386788368225
+    },
+    {
+      "image_path": "n01729977/ILSVRC2012_val_00029827.JPEG",
+      "wnid": "n01729977",
+      "gt_label": 55,
+      "pred_label": 55,
+      "confidence": 0.4775327742099762
+    },
+    {
+      "image_path": "n03769881/ILSVRC2012_val_00024201.JPEG",
+      "wnid": "n03769881",
+      "gt_label": 654,
+      "pred_label": 654,
+      "confidence": 0.7572799324989319
+    },
+    {
+      "image_path": "n03982430/ILSVRC2012_val_00007285.JPEG",
+      "wnid": "n03982430",
+      "gt_label": 736,
+      "pred_label": 736,
+      "confidence": 1.0
+    },
+    {
+      "image_path": "n02410509/ILSVRC2012_val_00036666.JPEG",
+      "wnid": "n02410509",
+      "gt_label": 347,
+      "pred_label": 347,
+      "confidence": 0.9167357683181763
+    },
+    {
+      "image_path": "n03216828/ILSVRC2012_val_00018083.JPEG",
+      "wnid": "n03216828",
+      "gt_label": 536,
+      "pred_label": 536,
+      "confidence": 0.40663132071495056
+    },
+    {
+      "image_path": "n02268443/ILSVRC2012_val_00042405.JPEG",
+      "wnid": "n02268443",
+      "gt_label": 319,
+      "pred_label": 319,
+      "confidence": 0.2722071409225464
+    },
+    {
+      "image_path": "n04346328/ILSVRC2012_val_00024779.JPEG",
+      "wnid": "n04346328",
+      "gt_label": 832,
+      "pred_label": 832,
+      "confidence": 0.8079687356948853
+    },
+    {
+      "image_path": "n02871525/ILSVRC2012_val_00024980.JPEG",
+      "wnid": "n02871525",
+      "gt_label": 454,
+      "pred_label": 454,
+      "confidence": 0.9785822033882141
+    },
+    {
+      "image_path": "n07768694/ILSVRC2012_val_00001514.JPEG",
+      "wnid": "n07768694",
+      "gt_label": 957,
+      "pred_label": 957,
+      "confidence": 0.30296996235847473
+    },
+    {
+      "image_path": "n03355925/ILSVRC2012_val_00019526.JPEG",
+      "wnid": "n03355925",
+      "gt_label": 557,
+      "pred_label": 557,
+      "confidence": 0.41537463665008545
+    },
+    {
+      "image_path": "n03026506/ILSVRC2012_val_00005560.JPEG",
+      "wnid": "n03026506",
+      "gt_label": 496,
+      "pred_label": 496,
+      "confidence": 0.31182336807250977
+    },
+    {
+      "image_path": "n02802426/ILSVRC2012_val_00030155.JPEG",
+      "wnid": "n02802426",
+      "gt_label": 430,
+      "pred_label": 430,
+      "confidence": 0.9953966736793518
+    },
+    {
+      "image_path": "n03995372/ILSVRC2012_val_00017255.JPEG",
+      "wnid": "n03995372",
+      "gt_label": 740,
+      "pred_label": 740,
+      "confidence": 0.7133419513702393
+    },
+    {
+      "image_path": "n04346328/ILSVRC2012_val_00047201.JPEG",
+      "wnid": "n04346328",
+      "gt_label": 832,
+      "pred_label": 832,
+      "confidence": 0.3555726408958435
+    },
+    {
+      "image_path": "n03743016/ILSVRC2012_val_00034818.JPEG",
+      "wnid": "n03743016",
+      "gt_label": 649,
+      "pred_label": 649,
+      "confidence": 0.9584047198295593
+    },
+    {
+      "image_path": "n07697313/ILSVRC2012_val_00017071.JPEG",
+      "wnid": "n07697313",
+      "gt_label": 933,
+      "pred_label": 933,
+      "confidence": 0.46365419030189514
+    },
+    {
+      "image_path": "n03355925/ILSVRC2012_val_00038515.JPEG",
+      "wnid": "n03355925",
+      "gt_label": 557,
+      "pred_label": 557,
+      "confidence": 0.9988503456115723
+    },
+    {
+      "image_path": "n01675722/ILSVRC2012_val_00040134.JPEG",
+      "wnid": "n01675722",
+      "gt_label": 38,
+      "pred_label": 38,
+      "confidence": 0.8580337166786194
+    },
+    {
+      "image_path": "n04591713/ILSVRC2012_val_00043192.JPEG",
+      "wnid": "n04591713",
+      "gt_label": 907,
+      "pred_label": 907,
+      "confidence": 0.554897665977478
+    },
+    {
+      "image_path": "n03792972/ILSVRC2012_val_00038176.JPEG",
+      "wnid": "n03792972",
+      "gt_label": 672,
+      "pred_label": 672,
+      "confidence": 0.9990680813789368
+    },
+    {
+      "image_path": "n03483316/ILSVRC2012_val_00047139.JPEG",
+      "wnid": "n03483316",
+      "gt_label": 589,
+      "pred_label": 589,
+      "confidence": 0.6323441863059998
+    },
+    {
+      "image_path": "n01774750/ILSVRC2012_val_00015999.JPEG",
+      "wnid": "n01774750",
+      "gt_label": 76,
+      "pred_label": 76,
+      "confidence": 0.8662564158439636
+    },
+    {
+      "image_path": "n03197337/ILSVRC2012_val_00047198.JPEG",
+      "wnid": "n03197337",
+      "gt_label": 531,
+      "pred_label": 531,
+      "confidence": 0.9299770593643188
+    },
+    {
+      "image_path": "n01833805/ILSVRC2012_val_00026090.JPEG",
+      "wnid": "n01833805",
+      "gt_label": 94,
+      "pred_label": 94,
+      "confidence": 0.9949030876159668
+    },
+    {
+      "image_path": "n01824575/ILSVRC2012_val_00033815.JPEG",
+      "wnid": "n01824575",
+      "gt_label": 91,
+      "pred_label": 91,
+      "confidence": 0.9868042469024658
+    },
+    {
+      "image_path": "n11879895/ILSVRC2012_val_00032270.JPEG",
+      "wnid": "n11879895",
+      "gt_label": 984,
+      "pred_label": 984,
+      "confidence": 0.8900009393692017
+    },
+    {
+      "image_path": "n01614925/ILSVRC2012_val_00040158.JPEG",
+      "wnid": "n01614925",
+      "gt_label": 22,
+      "pred_label": 22,
+      "confidence": 0.47941407561302185
+    },
+    {
+      "image_path": "n02807133/ILSVRC2012_val_00043987.JPEG",
+      "wnid": "n02807133",
+      "gt_label": 433,
+      "pred_label": 433,
+      "confidence": 0.302836149930954
+    },
+    {
+      "image_path": "n02859443/ILSVRC2012_val_00021541.JPEG",
+      "wnid": "n02859443",
+      "gt_label": 449,
+      "pred_label": 449,
+      "confidence": 0.9619069695472717
+    },
+    {
+      "image_path": "n02115641/ILSVRC2012_val_00041777.JPEG",
+      "wnid": "n02115641",
+      "gt_label": 273,
+      "pred_label": 273,
+      "confidence": 0.869825541973114
+    },
+    {
+      "image_path": "n09472597/ILSVRC2012_val_00004187.JPEG",
+      "wnid": "n09472597",
+      "gt_label": 980,
+      "pred_label": 980,
+      "confidence": 0.9999910593032837
+    },
+    {
+      "image_path": "n12057211/ILSVRC2012_val_00000551.JPEG",
+      "wnid": "n12057211",
+      "gt_label": 986,
+      "pred_label": 986,
+      "confidence": 0.585250735282898
+    },
+    {
+      "image_path": "n01796340/ILSVRC2012_val_00019036.JPEG",
+      "wnid": "n01796340",
+      "gt_label": 81,
+      "pred_label": 81,
+      "confidence": 0.9223053455352783
+    },
+    {
+      "image_path": "n04069434/ILSVRC2012_val_00022662.JPEG",
+      "wnid": "n04069434",
+      "gt_label": 759,
+      "pred_label": 759,
+      "confidence": 0.7597665786743164
+    },
+    {
+      "image_path": "n07860988/ILSVRC2012_val_00035491.JPEG",
+      "wnid": "n07860988",
+      "gt_label": 961,
+      "pred_label": 961,
+      "confidence": 0.996667206287384
+    },
+    {
+      "image_path": "n03666591/ILSVRC2012_val_00042002.JPEG",
+      "wnid": "n03666591",
+      "gt_label": 626,
+      "pred_label": 626,
+      "confidence": 0.6169745922088623
+    },
+    {
+      "image_path": "n03207941/ILSVRC2012_val_00025995.JPEG",
+      "wnid": "n03207941",
+      "gt_label": 534,
+      "pred_label": 534,
+      "confidence": 0.22251109778881073
+    },
+    {
+      "image_path": "n09472597/ILSVRC2012_val_00032361.JPEG",
+      "wnid": "n09472597",
+      "gt_label": 980,
+      "pred_label": 980,
+      "confidence": 0.24477340281009674
+    },
+    {
+      "image_path": "n01807496/ILSVRC2012_val_00041577.JPEG",
+      "wnid": "n01807496",
+      "gt_label": 86,
+      "pred_label": 86,
+      "confidence": 0.9085776209831238
+    },
+    {
+      "image_path": "n02906734/ILSVRC2012_val_00002937.JPEG",
+      "wnid": "n02906734",
+      "gt_label": 462,
+      "pred_label": 462,
+      "confidence": 0.9981525540351868
+    },
+    {
+      "image_path": "n02117135/ILSVRC2012_val_00048181.JPEG",
+      "wnid": "n02117135",
+      "gt_label": 276,
+      "pred_label": 276,
+      "confidence": 0.9407300353050232
+    },
+    {
+      "image_path": "n03095699/ILSVRC2012_val_00044334.JPEG",
+      "wnid": "n03095699",
+      "gt_label": 510,
+      "pred_label": 510,
+      "confidence": 0.5224551558494568
+    },
+    {
+      "image_path": "n02782093/ILSVRC2012_val_00002118.JPEG",
+      "wnid": "n02782093",
+      "gt_label": 417,
+      "pred_label": 417,
+      "confidence": 0.9893432855606079
+    },
+    {
+      "image_path": "n02823428/ILSVRC2012_val_00004521.JPEG",
+      "wnid": "n02823428",
+      "gt_label": 440,
+      "pred_label": 440,
+      "confidence": 0.7190994620323181
+    },
+    {
+      "image_path": "n02787622/ILSVRC2012_val_00017811.JPEG",
+      "wnid": "n02787622",
+      "gt_label": 420,
+      "pred_label": 420,
+      "confidence": 0.9968324303627014
+    },
+    {
+      "image_path": "n04456115/ILSVRC2012_val_00014480.JPEG",
+      "wnid": "n04456115",
+      "gt_label": 862,
+      "pred_label": 862,
+      "confidence": 0.6314775347709656
+    },
+    {
+      "image_path": "n02948072/ILSVRC2012_val_00010335.JPEG",
+      "wnid": "n02948072",
+      "gt_label": 470,
+      "pred_label": 470,
+      "confidence": 0.9468136429786682
+    },
+    {
+      "image_path": "n02692877/ILSVRC2012_val_00036643.JPEG",
+      "wnid": "n02692877",
+      "gt_label": 405,
+      "pred_label": 405,
+      "confidence": 0.9991390705108643
+    },
+    {
+      "image_path": "n04429376/ILSVRC2012_val_00042822.JPEG",
+      "wnid": "n04429376",
+      "gt_label": 857,
+      "pred_label": 857,
+      "confidence": 0.29989466071128845
+    },
+    {
+      "image_path": "n04429376/ILSVRC2012_val_00048901.JPEG",
+      "wnid": "n04429376",
+      "gt_label": 857,
+      "pred_label": 857,
+      "confidence": 0.9717224836349487
+    },
+    {
+      "image_path": "n04597913/ILSVRC2012_val_00016472.JPEG",
+      "wnid": "n04597913",
+      "gt_label": 910,
+      "pred_label": 910,
+      "confidence": 0.704858124256134
+    },
+    {
+      "image_path": "n02117135/ILSVRC2012_val_00039990.JPEG",
+      "wnid": "n02117135",
+      "gt_label": 276,
+      "pred_label": 276,
+      "confidence": 0.9984801411628723
+    },
+    {
+      "image_path": "n10565667/ILSVRC2012_val_00020849.JPEG",
+      "wnid": "n10565667",
+      "gt_label": 983,
+      "pred_label": 983,
+      "confidence": 0.8312831521034241
+    },
+    {
+      "image_path": "n03290653/ILSVRC2012_val_00022494.JPEG",
+      "wnid": "n03290653",
+      "gt_label": 548,
+      "pred_label": 548,
+      "confidence": 0.8566951155662537
+    },
+    {
+      "image_path": "n01518878/ILSVRC2012_val_00041114.JPEG",
+      "wnid": "n01518878",
+      "gt_label": 9,
+      "pred_label": 9,
+      "confidence": 0.8001383543014526
+    },
+    {
+      "image_path": "n02445715/ILSVRC2012_val_00033947.JPEG",
+      "wnid": "n02445715",
+      "gt_label": 361,
+      "pred_label": 361,
+      "confidence": 0.7209234833717346
+    },
+    {
+      "image_path": "n04597913/ILSVRC2012_val_00021192.JPEG",
+      "wnid": "n04597913",
+      "gt_label": 910,
+      "pred_label": 910,
+      "confidence": 0.9985507130622864
+    },
+    {
+      "image_path": "n02965783/ILSVRC2012_val_00009137.JPEG",
+      "wnid": "n02965783",
+      "gt_label": 475,
+      "pred_label": 475,
+      "confidence": 0.8575148582458496
+    },
+    {
+      "image_path": "n02841315/ILSVRC2012_val_00024139.JPEG",
+      "wnid": "n02841315",
+      "gt_label": 447,
+      "pred_label": 447,
+      "confidence": 0.9432632327079773
+    },
+    {
+      "image_path": "n03724870/ILSVRC2012_val_00009544.JPEG",
+      "wnid": "n03724870",
+      "gt_label": 643,
+      "pred_label": 643,
+      "confidence": 0.995928943157196
+    },
+    {
+      "image_path": "n02120505/ILSVRC2012_val_00033228.JPEG",
+      "wnid": "n02120505",
+      "gt_label": 280,
+      "pred_label": 280,
+      "confidence": 0.31267687678337097
+    },
+    {
+      "image_path": "n07802026/ILSVRC2012_val_00020287.JPEG",
+      "wnid": "n07802026",
+      "gt_label": 958,
+      "pred_label": 958,
+      "confidence": 0.9999885559082031
+    },
+    {
+      "image_path": "n04371430/ILSVRC2012_val_00041968.JPEG",
+      "wnid": "n04371430",
+      "gt_label": 842,
+      "pred_label": 842,
+      "confidence": 0.3476486802101135
+    },
+    {
+      "image_path": "n03992509/ILSVRC2012_val_00003294.JPEG",
+      "wnid": "n03992509",
+      "gt_label": 739,
+      "pred_label": 739,
+      "confidence": 0.9983870983123779
+    },
+    {
+      "image_path": "n03773504/ILSVRC2012_val_00021466.JPEG",
+      "wnid": "n03773504",
+      "gt_label": 657,
+      "pred_label": 657,
+      "confidence": 0.7337526679039001
+    },
+    {
+      "image_path": "n02101556/ILSVRC2012_val_00008619.JPEG",
+      "wnid": "n02101556",
+      "gt_label": 216,
+      "pred_label": 216,
+      "confidence": 0.27520066499710083
+    },
+    {
+      "image_path": "n02123045/ILSVRC2012_val_00010711.JPEG",
+      "wnid": "n02123045",
+      "gt_label": 281,
+      "pred_label": 281,
+      "confidence": 0.17264054715633392
+    },
+    {
+      "image_path": "n02727426/ILSVRC2012_val_00043414.JPEG",
+      "wnid": "n02727426",
+      "gt_label": 410,
+      "pred_label": 410,
+      "confidence": 0.8926253914833069
+    },
+    {
+      "image_path": "n04371430/ILSVRC2012_val_00040402.JPEG",
+      "wnid": "n04371430",
+      "gt_label": 842,
+      "pred_label": 842,
+      "confidence": 0.751281201839447
+    },
+    {
+      "image_path": "n01644900/ILSVRC2012_val_00039478.JPEG",
+      "wnid": "n01644900",
+      "gt_label": 32,
+      "pred_label": 32,
+      "confidence": 0.9591333270072937
+    }
+  ]
+}
