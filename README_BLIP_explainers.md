@@ -304,6 +304,56 @@ BLIP classifies all of them correctly. Classifier class names remain ImageNet
 by default, just as in the supplied CLIP command (no automatic switch to a
 120-class Dogs classifier).
 
+To classify the dataset with BLIP and create an attack input containing 100
+BLIP-correct images, run `classify.py` with `--model blip` and
+`--sample-output`. The summary JSON and attack sample JSON are separate:
+
+```bash
+python classify.py \
+  --model blip \
+  --data-path /path/to/ImageNet/val \
+  --index-json imgnet1k_label.json \
+  --blip-root BLIP \
+  --blip-checkpoint blip_checkpoint.pth \
+  --max-correct-samples 100 \
+  --output classification_reuslt/imagenet/blip_100_summary.json \
+  --sample-output classification_reuslt/imagenet/blip_100.json \
+  --device cuda
+```
+
+`classify.py` writes `blip_100.json` in the `{sample_id: relative_image_path}`
+format accepted by `adv_score_BLIP.py` and `script_sh/run_blip.sh`. Point the
+attack runner at it with `SAMPLE_PATH=classification_reuslt/imagenet/blip_100.json`.
+The regular classifier default remains CLIP; BLIP requires its checkpoint and
+the vendored BLIP source directory.
+
+On the Slurm server, submit the classification launcher from the repository root:
+
+```bash
+mkdir -p BLIP_faithfulness
+sbatch script_sh/classify_blip.sh
+```
+
+The launcher uses the same server repository, conda environment, and GPU
+resources as `run_blip.sh`. By default it stops after 100 BLIP-correct images
+and writes `classification_reuslt/imagenet/blip_100.json` plus
+`classification_reuslt/imagenet/blip_100_summary.json`. It reports an error if
+the dataset contains fewer than the requested number of correct samples.
+These are the first correct samples in dataset traversal order, not a random
+or class-balanced subset.
+
+Override `IMG_DIR`, `INDEX_JSON`, `CHECKPOINT`, `NUM_SAMPLES`, `BATCH_SIZE`,
+`LAST_HEADS`, `OUTPUT_DIR`, or `CLASSNAMES_PATH` as needed. Use the same checkpoint,
+class names, prompt, and final attention mode for classification and attack.
+For example:
+
+```bash
+BATCH_SIZE=16 NUM_SAMPLES=100 sbatch script_sh/classify_blip.sh
+# After classification succeeds:
+SAMPLE_PATH="$PWD/classification_reuslt/imagenet/blip_100.json" \
+  sbatch script_sh/run_blip.sh
+```
+
 Optional environment overrides: `IMG_DIR`, `SAMPLE_PATH`, `OUTPUT_DIR`,
 `PROCESS_BATCH_SIZE`, `RISE_MASKS`, `RISE_BATCH_SIZE`, `LAST_HEADS`.
 For example, lower `PROCESS_BATCH_SIZE` if GPU memory is insufficient:
