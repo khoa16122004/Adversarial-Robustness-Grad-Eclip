@@ -67,7 +67,7 @@ class BLIPClassificationTests(unittest.TestCase):
                 classify.main()
 
             samples = json.loads(samples_path.read_text(encoding="utf-8"))
-            self.assertEqual(samples, {"0": "n0/first.png"})
+            self.assertEqual(samples, {"n0": "n0/first.png"})
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
             self.assertEqual(summary["model"], "BLIP-ViT-base")
             self.assertEqual(summary["num_correct"], 1)

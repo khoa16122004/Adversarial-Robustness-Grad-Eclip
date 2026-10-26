@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import random
 from pathlib import Path
 
 try:
@@ -45,6 +46,12 @@ def main():
     parser.add_argument("--max-images", type=int, default=None, help="Optional cap on number of images")
     parser.add_argument("--max-correct-samples", type=int, default=None,
                         help="Stop after this many correctly classified samples")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Optional seed for randomized BLIP sample selection",
+    )
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size for image inference")
     parser.add_argument(
         "--classnames-path",
@@ -92,6 +99,9 @@ def main():
     image_items = collect_image_items(args.data_path, folder_to_label, max_images=args.max_images)
     if not image_items:
         raise ValueError("No image found for classification.")
+    if (args.model == "blip" and args.max_correct_samples is not None
+            and args.sample_output):
+        random.Random(args.seed).shuffle(image_items)
 
     if args.classnames_path:
         classnames = load_classnames(args.classnames_path)
@@ -231,10 +241,14 @@ def main():
     if args.sample_output:
         sample_output = Path(args.sample_output)
         sample_output.parent.mkdir(parents=True, exist_ok=True)
-        sample_payload = {
-            str(index): sample["image_path"]
-            for index, sample in enumerate(correct_samples)
-        }
+        sample_payload = {}
+        for sample in correct_samples:
+            sample_id = sample["wnid"]
+            suffix = 2
+            while sample_id in sample_payload:
+                sample_id = f"{sample['wnid']}_{suffix}"
+                suffix += 1
+            sample_payload[sample_id] = sample["image_path"]
         with sample_output.open("w", encoding="utf-8") as f:
             json.dump(sample_payload, f, ensure_ascii=False, indent=2)
         print(f"Saved attack samples: {sample_output}")
