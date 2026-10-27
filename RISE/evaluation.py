@@ -436,26 +436,34 @@ class JointAdversarialCausalMetric(nn.Module):
         return xt_states, xt
 
     def _path_loss(self, x_raw_adv, salient_order, run_mode, target_class, deletion_steps, process_batch_size, device):
+        """Returns (loss value, p_t trace, d loss / d x_raw_adv).
+
+        x_raw_adv must be a leaf with requires_grad. Each chunk is
+        back-propagated immediately so only one chunk's graph is alive.
+        """
         xt_states, xt_last = self._build_states(x_raw_adv, salient_order, run_mode, deletion_steps, device)
+        xt_states.append(xt_last)
+        n_states = len(xt_states)
 
         curr_batch_size = process_batch_size
         if curr_batch_size is None or curr_batch_size < 1:
-            curr_batch_size = len(xt_states)
+            curr_batch_size = n_states
 
-        loss_val = torch.zeros(1, device=device)
+        loss_val = 0.0
         p_t_trace = []
-        for start_idx in range(0, len(xt_states), curr_batch_size):
-            end_idx = min(len(xt_states), start_idx + curr_batch_size)
+        grad = torch.zeros_like(x_raw_adv)
+        for start_idx in range(0, n_states, curr_batch_size):
+            end_idx = min(n_states, start_idx + curr_batch_size)
             xt_batch = torch.cat(xt_states[start_idx:end_idx], dim=0)
             logits_batch = self.model(normalize_ImageNet1k(xt_batch))
             p_t_batch = logits_batch[:, target_class]
-            loss_val = loss_val + p_t_batch.sum()
-            p_t_trace.extend([float(v) for v in p_t_batch.detach().cpu().tolist()])
-
-        logits_last = self.model(normalize_ImageNet1k(xt_last))
-        loss_val += logits_last[:, target_class]
-        loss_val = loss_val / deletion_steps
-        return loss_val, p_t_trace
+            chunk_loss = p_t_batch.sum() / deletion_steps
+            grad = grad + torch.autograd.grad(chunk_loss, x_raw_adv, retain_graph=True)[0]
+            loss_val += float(chunk_loss.detach())
+            trace = [float(v) for v in p_t_batch.detach().cpu().tolist()]
+            p_t_trace.extend(trace[:-1] if end_idx == n_states else trace)
+            del logits_batch, p_t_batch, chunk_loss, xt_batch
+        return loss_val, p_t_trace, grad
 
     def single_run(
         self,
@@ -524,8 +532,10 @@ class JointAdversarialCausalMetric(nn.Module):
             saliency = np.asarray(saliency)
             salient_order = np.flip(np.argsort(saliency.reshape(-1, HW), axis=1), axis=-1).copy()
 
-            l_del, p_t_trace_del = self._path_loss(
-                x_raw_adv,
+            # Chunked backward through the path losses; the model graphs are freed per chunk.
+            x_leaf = x_raw_adv.detach().requires_grad_(True)
+            l_del_val, p_t_trace_del, g_del_x = self._path_loss(
+                x_leaf,
                 salient_order,
                 "del",
                 target_class,
@@ -533,8 +543,8 @@ class JointAdversarialCausalMetric(nn.Module):
                 process_batch_size,
                 device,
             )
-            l_ins, p_t_trace_ins = self._path_loss(
-                x_raw_adv,
+            l_ins_val, p_t_trace_ins, g_ins_x = self._path_loss(
+                x_leaf,
                 salient_order,
                 "ins",
                 target_class,
@@ -543,9 +553,9 @@ class JointAdversarialCausalMetric(nn.Module):
                 device,
             )
 
-            objective_del = l_del - l_preserve
-            objective_ins = -(l_ins + l_preserve) # twice the weight of l_preserve
-            # objective_ins = -l_ins
+            # Surrogates whose gradients w.r.t. delta equal those of the full path losses.
+            objective_del = (g_del_x * x_raw_adv).sum() - l_preserve
+            objective_ins = -(g_ins_x * x_raw_adv).sum() - l_preserve # twice the weight of l_preserve
             loss = objective_del + objective_ins
 
             grad_del = torch.autograd.grad(objective_del, delta, retain_graph=True, allow_unused=True)[0]
@@ -579,7 +589,7 @@ class JointAdversarialCausalMetric(nn.Module):
                     grad_norm_total_tensor.item() / (grad_norm_del + grad_norm_ins + 1e-12)
                 )
 
-            step_loss = float(loss.item())
+            step_loss = float(l_del_val - l_ins_val - 2.0 * l_preserve.item())
             step_pred_label = int(torch.argmax(adv_logits, dim=1).item())
             class_preserved = step_pred_label == target_class
             if class_preserved and (best_loss is None or step_loss < best_loss):
@@ -601,8 +611,8 @@ class JointAdversarialCausalMetric(nn.Module):
                 {
                     "pgd_step": k + 1,
                     "loss": step_loss,
-                    "loss_del": float(l_del.item()),
-                    "loss_ins": float(l_ins.item()),
+                    "loss_del": float(l_del_val),
+                    "loss_ins": float(l_ins_val),
                     "grad_cosine_l1_l2": grad_cosine,
                     "grad_dot_l1_l2": grad_dot,
                     "grad_norm_l1": grad_norm_del,
@@ -623,8 +633,8 @@ class JointAdversarialCausalMetric(nn.Module):
                         k + 1,
                         pgd_steps,
                         details["loss"][-1],
-                        float(l_del.item()),
-                        float(l_ins.item()),
+                        float(l_del_val),
+                        float(l_ins_val),
                     )
                 )
 
