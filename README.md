@@ -97,7 +97,19 @@ Class names are read from this mapping; `--classnames-path` is not needed.
 If supplying a separate class-name list later, keep its order consistent with
 these generated labels.
 
+For CUB folders such as `001.Black_footed_Albatross`, override the prefix-removal
+regex to remove everything through the first dot:
 
+```bash
+python generate_label_index.py --data-path CUB_200_2011/images --output cub_label.json --strip-prefix-pattern '^[^.]*\.'
+```
+
+This produces `"001.Black_footed_Albatross": [0, "Black footed Albatross"]`.
+Only the class name is transformed; JSON keys and sorted label order are
+unchanged. Without this option, the default remains `^n\d+-`, so CUB numeric
+prefixes are preserved. Folder names that do not match the pattern are kept
+before underscores and hyphens are converted to spaces. Invalid regexes or
+patterns that leave an empty class name raise an error.
 
 ## 4 Quick FOA run
 
