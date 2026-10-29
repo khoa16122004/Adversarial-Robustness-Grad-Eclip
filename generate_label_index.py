@@ -39,7 +39,7 @@ def main():
         help="Output label mapping JSON (default: standfordpet_label.json)",
     )
     parser.add_argument(
-        "--strip-prefix-pattern", default=r"^n\d+-",
+        "--strip-prefix-pattern", default=r"^n\d+-.",
         help=(
             r"Regex removed once from each folder name before normalizing spaces "
             r"(default: ^n\d+-). For CUB use ^[^.]*\. to remove through the first dot. "
