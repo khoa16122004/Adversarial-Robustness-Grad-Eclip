@@ -72,6 +72,31 @@ python .\main_script\ROAD_evaluate_and_export.py \
 
 Note: this script currently expects the dataset token StandfordPet.
 
+### Generate a classification label index
+
+For a dataset with immediate class subfolders such as
+`StandfordPet_Dataset/n02090379-redbone`, run:
+
+```bash
+python generate_label_index.py --data-path /datastore/khangtd/Adversarial-Robustness-Grad-Eclip/StandfordPet_Dataset --output standfordpet_label.json
+```
+
+The script sorts class folders by name and assigns consecutive labels starting
+at zero. It preserves folder names as JSON keys, removes an `n<digits>-` prefix
+from class names, and converts underscores and hyphens to spaces. Hidden folders
+and root-level files are ignored. The input must be the class-folder root, not
+its parent or an individual class folder.
+
+Use the resulting mapping with classification:
+
+```bash
+python classify.py --data-path /datastore/khangtd/Adversarial-Robustness-Grad-Eclip/StandfordPet_Dataset --index-json standfordpet_label.json --output pet_classification.json
+```
+
+Class names are read from this mapping; `--classnames-path` is not needed.
+If supplying a separate class-name list later, keep its order consistent with
+these generated labels.
+
 
 
 ## 4 Quick FOA run
@@ -87,4 +112,3 @@ python .\adv_score.py \
   --output-dir .\outputs\result_16\ImageNet\CLIP_ViTB16\ins_del_optimized_output \
   --eps 16 --alpha 4 --pgd-steps 50 --process-batch-size 64
 ```
-
