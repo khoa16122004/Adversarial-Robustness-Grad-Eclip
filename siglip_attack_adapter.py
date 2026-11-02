@@ -75,6 +75,7 @@ class SigLIPAttackAdapter(nn.Module):
             transforms.ToTensor(),
             transforms.Normalize(CLIP_MEAN, CLIP_STD),
         ])
+        self.to(device)
         self.eval()
 
     @property
