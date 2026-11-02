@@ -20,7 +20,7 @@ from RISE.evaluation import (
 from siglip_attack_adapter import (
     HM_METHODS, SigLIPAttackAdapter, build_zero_shot_siglip_classifier, generate_hm,
 )
-from test_siglip_explainers import REPO_ROOT
+from test_siglip_explainers import EXPLAINER_VERSION, REPO_ROOT
 from util import (
     build_blur_substrate, build_causal_metric_model, denorm_ImageNet1k,
     load_classnames, normalize_ImageNet1k, predict_zero_shot_clip,
@@ -172,6 +172,7 @@ def main():
     }
     config.update({
         "model_type": "SigLIP",
+        "explainer_version": EXPLAINER_VERSION,
         "image_size": adapter.image_size,
         "patch_size": adapter.patch_size,
         "logit_scale": classifier.logit_scale,
@@ -282,6 +283,7 @@ def main():
             "pgd_trace": details.get("pgd_trace", []),
             "rerun": rerun_results,
             "model": "SigLIP",
+            "explainer_version": EXPLAINER_VERSION,
             "pred_label": pred_label,
             "pred_classname": classnames[pred_label],
             "pred_confidence": pred_confidence,

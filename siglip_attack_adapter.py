@@ -9,7 +9,7 @@ from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 
 from test_siglip_explainers import (
-    encode_image, gradient_maps, image_text_logits, normalize_map, rise_map,
+    encode_image, gradient_maps, normalize_map, rise_map,
 )
 
 HM_METHODS = {

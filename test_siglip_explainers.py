@@ -12,6 +12,7 @@ from pathlib import Path
 METHODS = ("gradeclip", "game", "gradcam", "maskclip", "rise")
 LOG = logging.getLogger("siglip-explainers")
 REPO_ROOT = Path(__file__).resolve().parent
+EXPLAINER_VERSION = "siglip-pooling-v2"
 
 
 def parse_args():
@@ -56,8 +57,39 @@ def normalize_map(values):
     return (values - low) / (high - low).clamp_min(torch.finfo(values.dtype).eps)
 
 
+def _pool_image(head, hidden):
+    """Expose the learned probe's attention without changing SigLIP pooling."""
+    import torch
+    import torch.nn.functional as F
+
+    attention = head.attention
+    batch, count, width = hidden.shape
+    probe = head.probe.expand(batch, -1, -1)
+    weights = attention.in_proj_weight.chunk(3)
+    biases = (
+        attention.in_proj_bias.chunk(3)
+        if attention.in_proj_bias is not None else (None, None, None)
+    )
+    heads = attention.num_heads
+    head_dim = width // heads
+    query = F.linear(probe, weights[0], biases[0])
+    key = F.linear(hidden, weights[1], biases[1])
+    value = F.linear(hidden, weights[2], biases[2])
+    query = query.reshape(batch, 1, heads, head_dim).transpose(1, 2)
+    key = key.reshape(batch, count, heads, head_dim).transpose(1, 2)
+    value = value.reshape(batch, count, heads, head_dim).transpose(1, 2)
+    probabilities = ((query * head_dim ** -0.5) @ key.transpose(-2, -1)).softmax(-1)
+    attended = (probabilities @ value).transpose(1, 2).reshape(batch, 1, width)
+    pooled = attention.out_proj(attended)
+    features = (pooled + head.mlp(head.layernorm(pooled)))[:, 0]
+    return features, {
+        "q": query, "k": key, "v": value,
+        "attention": probabilities, "attended": attended,
+    }
+
+
 def encode_image(model, pixel_values, game_start=None):
-    """Run SigLIP's vision transformer while exposing final-block activations."""
+    """Run the native vision computation, exposing backbone and pooling attention."""
     import torch
     import torch.nn.functional as F
 
@@ -105,7 +137,9 @@ def encode_image(model, pixel_values, game_start=None):
             }
 
     hidden = vision.post_layernorm(hidden)
-    return vision.head(hidden), cache, attentions
+    features, pooling = _pool_image(vision.head, hidden)
+    cache["pooling"] = pooling
+    return features, cache, attentions
 
 
 def image_text_logits(model, image_features, text_features):
@@ -127,7 +161,9 @@ def gradient_maps(model, pixel_values, text_feature, args):
     features, cache, attentions = encode_image(
         model, pixel_values, start if "game" in args.methods else None,
     )
-    score = image_text_logits(model, features, text_feature).reshape(())
+    # Match the BLIP/CLIP gradient explainers' cosine objective, without sigmoid saturation.
+    score = (F.normalize(features, dim=-1) @ F.normalize(text_feature, dim=-1).T).reshape(())
+    pooling = cache["pooling"]
     patch_count = cache["input"].shape[1]
     side = math.isqrt(patch_count)
     if side * side != patch_count:
@@ -135,14 +171,13 @@ def gradient_maps(model, pixel_values, text_feature, args):
     maps = {}
 
     if "gradeclip" in args.methods:
-        gradient = torch.autograd.grad(score, cache["attended"], retain_graph=True)[0][0]
+        gradient = torch.autograd.grad(score, pooling["attended"], retain_graph=True)[0][0, 0]
         query, key, value = (
-            cache[name].detach().transpose(1, 2).flatten(2)[0]
+            pooling[name].detach().transpose(1, 2).flatten(2)[0]
             for name in ("q", "k", "v")
         )
-        global_query = F.normalize(query.mean(dim=0, keepdim=True), dim=-1)
         locality = normalize_map(
-            (global_query * F.normalize(key, dim=-1)).sum(-1),
+            (F.normalize(query, dim=-1) * F.normalize(key, dim=-1)).sum(-1),
         )
         maps["gradeclip"] = (gradient * value * locality[:, None]).sum(-1).relu()
 
@@ -153,39 +188,38 @@ def gradient_maps(model, pixel_values, text_feature, args):
         maps["gradcam"] = (channel_weights * layer_input).sum(-1)[0].relu()
 
     if "game" in args.methods:
-        gradients = torch.autograd.grad(score, attentions, retain_graph=True)
+        gradients = torch.autograd.grad(
+            score, [*attentions, pooling["attention"]], retain_graph=True,
+        )
         token_count = attentions[0].shape[-1]
         relevance = torch.eye(token_count, device=pixel_values.device).unsqueeze(0)
-        for attention, gradient in zip(attentions, gradients):
+        for attention, gradient in zip(attentions, gradients[:-1]):
             cam = (attention.detach() * gradient.detach()).clamp_min(0).mean(dim=1)
             relevance = relevance + cam.bmm(relevance)
-        maps["game"] = relevance.mean(dim=1)[0]
+        probe_relevance = (
+            pooling["attention"].detach() * gradients[-1].detach()
+        ).clamp_min(0).mean(dim=1)
+        maps["game"] = probe_relevance.bmm(relevance)[0, 0]
 
     if "maskclip" in args.methods:
         with torch.no_grad():
-            layer = layers[-1]
             query, key, value = (
-                cache[name].detach().transpose(1, 2).flatten(2)
+                pooling[name].detach().transpose(1, 2).flatten(2)
                 for name in ("q", "k", "v")
             )
-            global_query = F.normalize(query.mean(dim=1, keepdim=True), dim=-1)
-            locality = (global_query * F.normalize(key, dim=-1)).sum(-1)[0]
-            dense = layer.self_attn.out_proj(value) + cache["input"].detach()
-            dense = dense + layer.mlp(layer.layer_norm2(dense))
-            dense = model.vision_model.post_layernorm(dense)
-            batch, tokens, width = dense.shape
-            # Pool each patch independently with SigLIP's learned pooling head.
-            dense_features = F.normalize(
-                model.vision_model.head(dense.reshape(batch * tokens, 1, width))
-                .reshape(batch, tokens, width), dim=-1,
-            )
+            locality = (
+                F.normalize(query, dim=-1) * F.normalize(key, dim=-1)
+            ).sum(-1)[0]
+            head = model.vision_model.head
+            dense = head.attention.out_proj(value)
+            dense_features = F.normalize(dense + head.mlp(head.layernorm(dense)), dim=-1)
             text = F.normalize(text_feature, dim=-1)
             maps["maskclip"] = (dense_features[0] @ text[0]) * locality
 
     return {
         name: value.detach().reshape(side, side)
         for name, value in maps.items()
-    }, float(score.detach().item())
+    }, float(image_text_logits(model, features.detach(), text_feature.detach()).item())
 
 
 def rise_map(model, pixel_values, text_feature, args):
@@ -215,7 +249,7 @@ def rise_map(model, pixel_values, text_feature, args):
                 masks.append(upsampled[:, :, y:y + height, x:x + width])
             masks = torch.cat(masks).to(pixel_values.device)
             features, _, _ = encode_image(model, pixel_values * masks)
-            scores = image_text_logits(model, features, text_feature).reshape(-1, 1, 1)
+            scores = image_text_logits(model, features, text_feature).sigmoid().reshape(-1, 1, 1)
             saliency += (scores * masks[:, 0]).sum(dim=0)
             LOG.info("RISE: %d/%d masks", offset + count, args.rise_masks)
     return saliency / (args.rise_masks * args.rise_prob)
@@ -289,6 +323,9 @@ def main():
         "model": args.model,
         "device": str(device),
         "methods": args.methods,
+        "explainer_version": EXPLAINER_VERSION,
+        "gradient_target": "image-text cosine similarity (same as BLIP/CLIP)",
+        "rise_target": "sigmoid of the native SigLIP image-text logit",
         "score_target": "SigLIP image-text logit (scaled cosine similarity plus logit bias)",
         "score": reference_score,
         "game_start_layer": args.game_start_layer,
