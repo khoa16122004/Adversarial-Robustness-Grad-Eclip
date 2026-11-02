@@ -29,7 +29,8 @@ process_batch_size="${PROCESS_BATCH_SIZE:-32}"
 rise_masks="${RISE_MASKS:-2000}"
 rise_batch_size="${RISE_BATCH_SIZE:-50}"
 pgd_steps="${PGD_STEPS:-50}"
-prompt_template="${PROMPT_TEMPLATE:-a photo of {}}"
+default_prompt='a photo of {}'
+prompt_template="${PROMPT_TEMPLATE:-$default_prompt}"
 read -r -a hm_types <<< "${HM_TYPES:-eclip game gradcam maskclip rise}"
 read -r -a epsilons <<< "${EPSILONS:-2 4 8 16}"
 
@@ -41,8 +42,15 @@ if python -c 'import certifi' >/dev/null 2>&1; then
 fi
 
 python -c 'from transformers import SiglipModel, SiglipProcessor'
+explainer_version="$(python -c 'from test_siglip_explainers import EXPLAINER_VERSION; print(EXPLAINER_VERSION)')"
+output_root="$output_root/$explainer_version"
+extra_args=()
+if [[ -n "${CLASSNAMES_PATH:-}" ]]; then
+  extra_args+=(--classnames-path "$CLASSNAMES_PATH")
+fi
 mkdir -p "$output_root"
 output_root="$(cd -- "$output_root" && pwd)"
+printf 'SigLIP explainer: %s\nOutput root: %s\n' "$explainer_version" "$output_root"
 
 for hm in "${hm_types[@]}"; do
   for epsilon in "${epsilons[@]}"; do
@@ -63,7 +71,8 @@ for hm in "${hm_types[@]}"; do
       --pgd-steps "$pgd_steps" \
       --process-batch-size "$process_batch_size" \
       --rise-masks "$rise_masks" \
-      --rise-batch-size "$rise_batch_size"
+      --rise-batch-size "$rise_batch_size" \
+      "${extra_args[@]}"
   done
 done
 

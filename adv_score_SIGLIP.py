@@ -46,7 +46,7 @@ def _sample_outputs_are_complete(sample_dir: Path, args) -> bool:
         required_outputs.append(sample_dir / f"{prefix}_{mode}_summary.png")
         if args.save_process:
             process_dir = sample_dir / f"steps_{prefix}_{mode}"
-            n_steps = (args.image_size * args.image_size + args.step - 1) // args.step
+            n_steps = (224 * 224 + args.step - 1) // args.step
             required_outputs.extend(
                 process_dir / f"{step:03d}.png" for step in range(n_steps + 1)
             )
@@ -80,7 +80,9 @@ def parse_args():
     parser.add_argument("--step", type=int, default=224)
     parser.add_argument("--kernel-size", type=int, default=11)
     parser.add_argument("--kernel-sigma", type=float, default=5)
-    parser.add_argument("--output-dir", default=str(REPO_ROOT / "SIGLIP_result"))
+    parser.add_argument(
+        "--output-dir", default=str(REPO_ROOT / "SIGLIP_result" / EXPLAINER_VERSION),
+    )
     parser.add_argument("--img-dir", required=True)
     parser.add_argument("--sample-path", required=True)
     parser.add_argument("--classnames-path")
@@ -162,6 +164,22 @@ def main():
     blur_fn = build_blur_substrate(args.kernel_size, args.kernel_sigma)
     output_dir = Path(args.output_dir) / args.hm_type / args.mode
     output_dir.mkdir(parents=True, exist_ok=True)
+    config_path = output_dir / "run_config.json"
+    if config_path.is_file():
+        with config_path.open(encoding="utf-8") as stream:
+            previous_config = json.load(stream)
+        if previous_config.get("explainer_version") != EXPLAINER_VERSION:
+            raise ValueError(
+                f"Output directory {output_dir} belongs to another explainer version. "
+                f"Use a new --output-dir for {EXPLAINER_VERSION}; old results must not "
+                "be resumed with the new implementation."
+            )
+    elif any(output_dir.iterdir()):
+        raise ValueError(
+            f"Nonempty output directory {output_dir} has no run_config.json. "
+            "Use a new --output-dir to avoid mixing unversioned results."
+        )
+    logging.info("SigLIP explainer: %s; output: %s", EXPLAINER_VERSION, output_dir)
     with open(args.sample_path, encoding="utf-8") as stream:
         samples = json.load(stream)
     if not isinstance(samples, dict) or not samples:
@@ -181,9 +199,7 @@ def main():
         "attack_target": "clean predicted class (shared PGD behavior)",
         "score_target": "SigLIP scaled cosine similarity plus logit bias",
     })
-    (output_dir / "run_config.json").write_text(
-        json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8",
-    )
+    _write_json_atomic(config_path, config)
 
     skipped_samples = 0
     for folder_name, image_name in tqdm(samples.items()):

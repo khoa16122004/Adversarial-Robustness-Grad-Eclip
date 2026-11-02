@@ -64,6 +64,10 @@ policies matched across models. This update leaves BLIP/CLIP behavior unchanged.
 Use a **new output directory** when rerunning attacks with v3: the existing
 file-based resume check can otherwise skip samples produced by the old
 implementation. The explainer and attack JSONs record `explainer_version`.
+The attack launcher automatically appends the imported explainer version to
+`OUTPUT_DIR` before the epsilon/method/mode directories. The Python runner
+rejects an output directory whose run configuration has a different explainer
+version (or a nonempty directory with no run configuration).
 The shared metric still uses softmax over class logits; that is separate from
 RISE's native sigmoid target.
 
