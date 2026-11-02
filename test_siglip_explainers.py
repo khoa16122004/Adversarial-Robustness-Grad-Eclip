@@ -62,17 +62,13 @@ def encode_image(model, pixel_values, game_start=None):
     import torch.nn.functional as F
 
     vision = model.vision_model
-    hidden = vision.pre_layrnorm(vision.embeddings(pixel_values))
+    hidden = vision.embeddings(pixel_values)
     cache = {}
     attentions = []
     layers = vision.encoder.layers
     for index, layer in enumerate(layers):
         final = index == len(layers) - 1
         capture_game = game_start is not None and index >= game_start
-        if not final and not capture_game:
-            hidden = layer(hidden, attention_mask=None)
-            continue
-
         residual = hidden
         normalized = layer.layer_norm1(hidden)
         batch, token_count, width = normalized.shape
@@ -90,7 +86,7 @@ def encode_image(model, pixel_values, game_start=None):
             for projection in (attention.q_proj, attention.k_proj, attention.v_proj)
         )
         weights = F.softmax(
-            (query @ key.transpose(-2, -1)) * attention.scale,
+            (query @ key.transpose(-2, -1)) * head_dim ** -0.5,
             dim=-1,
             dtype=torch.float32,
         ).to(query.dtype)
@@ -108,8 +104,8 @@ def encode_image(model, pixel_values, game_start=None):
                 "v": value,
             }
 
-    pooled = vision.post_layernorm(hidden.mean(dim=1))
-    return model.visual_projection(pooled), cache, attentions
+    hidden = vision.post_layernorm(hidden)
+    return vision.head(hidden), cache, attentions
 
 
 def image_text_logits(model, image_features, text_features):
@@ -176,9 +172,12 @@ def gradient_maps(model, pixel_values, text_feature, args):
             locality = (global_query * F.normalize(key, dim=-1)).sum(-1)[0]
             dense = layer.self_attn.out_proj(value) + cache["input"].detach()
             dense = dense + layer.mlp(layer.layer_norm2(dense))
+            dense = model.vision_model.post_layernorm(dense)
+            batch, tokens, width = dense.shape
+            # Pool each patch independently with SigLIP's learned pooling head.
             dense_features = F.normalize(
-                model.visual_projection(model.vision_model.post_layernorm(dense)),
-                dim=-1,
+                model.vision_model.head(dense.reshape(batch * tokens, 1, width))
+                .reshape(batch, tokens, width), dim=-1,
             )
             text = F.normalize(text_feature, dim=-1)
             maps["maskclip"] = (dense_features[0] @ text[0]) * locality
@@ -275,7 +274,9 @@ def main():
     started = time.perf_counter()
     maps = {}
     if any(name != "rise" for name in args.methods):
-        maps, explained_score = gradient_maps(model, pixel_values, text_feature, args)
+        maps, explained_score = gradient_maps(
+            model, pixel_values.detach().requires_grad_(True), text_feature, args,
+        )
         if not math.isclose(explained_score, reference_score, rel_tol=1e-4, abs_tol=1e-5):
             raise RuntimeError("Explainer forward does not match the SigLIP image-text logit")
     if "rise" in args.methods:

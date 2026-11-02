@@ -29,6 +29,9 @@ before generating the maps. It saves each method's NumPy map, heatmap, and
 overlay, plus `summary.json`. SigLIP has no class token in its vision patch
 sequence, so GradeCAM-style locality and GAME relevance aggregate over the
 patch tokens instead of selecting a CLS token.
+The image encoder uses SigLIP's post-layer normalization and learned attention
+pooling head, not CLIP's pre-layer normalization or visual projection.
+MaskCLIP-style dense features apply this pooling head independently to each patch.
 
 Both classification and adversarial scoring default to the same zero-shot
 prompt template used by the existing CLIP pipeline: `a photo of {}`. Override

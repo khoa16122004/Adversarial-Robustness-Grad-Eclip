@@ -77,24 +77,37 @@ class TinySiglipVision(nn.Module):
     def __init__(self):
         super().__init__()
         self.embeddings = TinySiglipEmbeddings()
-        self.pre_layrnorm = nn.LayerNorm(8)
         self.encoder = TinySiglipEncoder()
         self.post_layernorm = nn.LayerNorm(8)
+        self.head = TinySiglipPoolingHead()
 
     def forward(self, pixels):
-        hidden = self.pre_layrnorm(self.embeddings(pixels))
+        hidden = self.embeddings(pixels)
         for layer in self.encoder.layers:
             hidden = layer(hidden, attention_mask=None)
-        return self.post_layernorm(hidden.mean(dim=1))
+        return self.head(self.post_layernorm(hidden))
+
+
+class TinySiglipPoolingHead(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.probe = nn.Parameter(torch.randn(1, 1, 8))
+        self.attention = nn.MultiheadAttention(8, 2, batch_first=True)
+        self.layernorm = nn.LayerNorm(8)
+        self.mlp = nn.Sequential(nn.Linear(8, 16), nn.GELU(), nn.Linear(16, 8))
+
+    def forward(self, hidden):
+        probe = self.probe.expand(hidden.shape[0], -1, -1)
+        pooled = self.attention(probe, hidden, hidden)[0]
+        return (pooled + self.mlp(self.layernorm(pooled)))[:, 0]
 
 
 class TinySiglip(nn.Module):
     def __init__(self):
         super().__init__()
         self.vision_model = TinySiglipVision()
-        self.visual_projection = nn.Linear(8, 6)
         self.token_embedding = nn.Embedding(32, 8)
-        self.text_projection = nn.Linear(8, 6)
+        self.text_projection = nn.Linear(8, 8)
         self.logit_scale = nn.Parameter(torch.tensor(1.0))
         self.logit_bias = nn.Parameter(torch.tensor(-2.0))
         self.config = SimpleNamespace(
@@ -102,7 +115,7 @@ class TinySiglip(nn.Module):
         )
 
     def get_image_features(self, pixel_values):
-        return self.visual_projection(self.vision_model(pixel_values))
+        return self.vision_model(pixel_values)
 
     def get_text_features(self, input_ids, attention_mask=None):
         return self.text_projection(self.token_embedding(input_ids).mean(dim=1))
@@ -209,6 +222,38 @@ class SiglipAttackTests(unittest.TestCase):
         for values in maps.values():
             self.assertEqual(values.shape, (14, 14))
             self.assertTrue(torch.isfinite(values).all())
+
+    def test_real_transformers_siglip_forward_and_explainers(self):
+        from transformers import SiglipConfig, SiglipModel
+
+        config = SiglipConfig(
+            text_config={
+                "vocab_size": 32, "hidden_size": 8, "intermediate_size": 16,
+                "num_hidden_layers": 2, "num_attention_heads": 2,
+                "max_position_embeddings": 4,
+            },
+            vision_config={
+                "hidden_size": 8, "intermediate_size": 16,
+                "num_hidden_layers": 2, "num_attention_heads": 2,
+                "image_size": 32, "patch_size": 16,
+            },
+        )
+        model = SiglipModel(config).eval().requires_grad_(False)
+        image = torch.randn(1, 3, 32, 32, requires_grad=True)
+        features, _, _ = encode_image(model, image)
+        expected = model.vision_model(pixel_values=image, return_dict=True).pooler_output
+        torch.testing.assert_close(features, expected, rtol=1e-4, atol=1e-5)
+        text = F.normalize(model.text_model(
+            input_ids=torch.tensor([[3, 1, 1, 1]]), return_dict=True,
+        ).pooler_output, dim=-1)
+        args = SimpleNamespace(
+            game_start_layer=0, methods=["gradeclip", "game", "gradcam", "maskclip"],
+        )
+        maps, _ = gradient_maps(model, image, text, args)
+        for values in maps.values():
+            self.assertEqual(values.shape, (2, 2))
+            self.assertTrue(torch.isfinite(values).all())
+        self.assertTrue(torch.isfinite(torch.autograd.grad(features.sum(), image)[0]).all())
 
 
 if __name__ == "__main__":
