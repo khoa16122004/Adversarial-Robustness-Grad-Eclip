@@ -150,7 +150,7 @@ def image_text_logits(model, image_features, text_features):
     return model.logit_scale.exp() * (image_features @ text_features.T) + model.logit_bias
 
 
-def gradient_maps(model, pixel_values, text_feature, args):
+def gradient_maps(model, pixel_values, text_feature, args, *, diagnostics=None):
     import torch
     import torch.nn.functional as F
 
@@ -181,17 +181,21 @@ def gradient_maps(model, pixel_values, text_feature, args):
         contributions = (gradient * value * locality[:, None]).sum(-1)
         maps["gradeclip"] = contributions.relu()
         if maps["gradeclip"].max().item() == maps["gradeclip"].min().item():
-            LOG.warning(
+            diagnostic = (
                 "Degenerate SigLIP gradeclip: cosine=%.6g, gradient_norm=%.6g, "
                 "query_norm=%.6g, key_norm=%.6g, value_norm=%.6g, "
                 "qk_range=[%.6g, %.6g], contribution_range=[%.6g, %.6g], "
-                "positive_patches=%d/%d. No attribution fallback was applied.",
+                "positive_patches=%d/%d. No attribution fallback was applied."
+            ) % (
                 score.detach().item(), gradient.norm().item(),
                 query.norm().item(), key.norm().item(), value.norm().item(),
                 similarity.min().item(), similarity.max().item(),
                 contributions.min().item(), contributions.max().item(),
                 (contributions > 0).sum().item(), contributions.numel(),
             )
+            LOG.warning("%s", diagnostic)
+            if diagnostics is not None:
+                diagnostics["gradeclip"] = diagnostic
 
     if "gradcam" in args.methods:
         layer_input = cache["input"]
