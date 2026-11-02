@@ -223,8 +223,24 @@ def main():
             )
             prefix = args.mode
             image_filename = f"adversarial_image_{args.mode}.png"
+        explanation_step = 0
+
+        def explain_attack_step(raw_model, hm_type, image, embedding, texts, resize, preprocess):
+            nonlocal explanation_step
+            explanation_step += 1
+            try:
+                return generate_hm(
+                    raw_model, hm_type, image, embedding, texts, resize, preprocess,
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    f"Sample {folder_name!r}, image {image_name!r}, "
+                    f"PGD explanation step {explanation_step}/{args.pgd_steps}, "
+                    f"eps={args.eps}, alpha={args.alpha}: {exc}"
+                ) from exc
+
         x_adv, details = attack.single_run(
-            image_raw, generate_hm, eps=args.eps / 255.0, alpha=args.alpha / 255.0,
+            image_raw, explain_attack_step, eps=args.eps / 255.0, alpha=args.alpha / 255.0,
             pgd_steps=args.pgd_steps, process_batch_size=args.process_batch_size,
         )
         x_adv = x_adv.detach().cpu()
