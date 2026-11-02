@@ -232,6 +232,12 @@ with the same TXT/JSON formats accepted by `util.load_classnames`.
 - `--save-process` saves deletion/insertion rerun previews, as with CLIP.
   Decrease `--process-batch-size` if a forward batch is too large. The shared
   engine still retains the path's computation graphs for the PGD backward pass.
+- Samples are skipped on subsequent runs only when their adversarial image,
+  both rerun saliency outputs, and both summary plots already exist. If
+  `--save-process` is enabled, all expected rerun step images must also exist.
+  This lets the runner recognize completed outputs from runs made before
+  `curve_information.json` was added; an interrupted/incomplete sample runs
+  again.
 
 For a smoke run, use a JSON containing one image and add
 `--pgd-steps 2 --step 25088 --process-batch-size 2`.

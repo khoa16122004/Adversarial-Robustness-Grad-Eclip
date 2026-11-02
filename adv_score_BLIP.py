@@ -3,8 +3,10 @@
 import argparse
 import json
 import logging
+import os
 from pathlib import Path
 import sys
+import tempfile
 
 import torch
 import torch.nn.functional as F
@@ -23,6 +25,47 @@ from util import (
     denorm_ImageNet1k, load_classnames, normalize_ImageNet1k, predict_zero_shot_clip,
     save_causal_metric_summary, save_saliency_outputs,
 )
+
+
+def _sample_outputs_are_complete(sample_dir: Path, args) -> bool:
+    if args.mode == "del+ins":
+        prefix = "joint"
+        image_filename = "adversarial_image_del_ins.png"
+    else:
+        prefix = args.mode
+        image_filename = f"adversarial_image_{args.mode}.png"
+
+    required_outputs = [sample_dir / image_filename]
+    for mode in ("del", "ins"):
+        stem = f"{prefix}_{mode}_adv_{args.hm_type}_saliency"
+        required_outputs.extend(
+            sample_dir / f"{stem}{suffix}"
+            for suffix in (".npy", ".png", "_overlay.png")
+        )
+        required_outputs.append(sample_dir / f"{prefix}_{mode}_summary.png")
+        if args.save_process:
+            process_dir = sample_dir / f"steps_{prefix}_{mode}"
+            n_steps = (args.image_size * args.image_size + args.step - 1) // args.step
+            required_outputs.extend(
+                process_dir / f"{step:03d}.png" for step in range(n_steps + 1)
+            )
+    return all(path.is_file() for path in required_outputs)
+
+
+def _write_json_atomic(path: Path, payload: dict) -> None:
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent,
+            prefix=f".{path.name}.", suffix=".tmp", delete=False,
+        ) as stream:
+            temporary_path = Path(stream.name)
+            json.dump(payload, stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def parse_args():
@@ -127,8 +170,12 @@ def main():
         "explainer_text": "bare class name (same as adv_score_CLIP.py)",
     })
     (output_dir / "run_config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+    skipped_samples = 0
     for folder_name, image_name in tqdm(samples.items()):
         sample_dir = output_dir / folder_name
+        if _sample_outputs_are_complete(sample_dir, args):
+            skipped_samples += 1
+            continue
         sample_dir.mkdir(parents=True, exist_ok=True)
         with Image.open(Path(args.img_dir) / image_name) as source:
             image = source.convert("RGB")
@@ -224,9 +271,8 @@ def main():
         if args.mode == "del+ins":
             payload["combined_score"] = rerun_results["del"]["auc"] + rerun_results["ins"]["auc"]
             payload["score_formula"] = "joint_del_auc + joint_ins_auc"
-        (sample_dir / "curve_information.json").write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8",
-        )
+        _write_json_atomic(sample_dir / "curve_information.json", payload)
+    logging.info("Skipped %d completed samples", skipped_samples)
 
 
 if __name__ == "__main__":

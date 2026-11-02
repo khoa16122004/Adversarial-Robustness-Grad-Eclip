@@ -25,7 +25,7 @@ from util import (
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Classify ImageNet-style samples with CLIP or BLIP zero-shot"
+        description="Classify ImageNet-style samples with CLIP, BLIP, or SigLIP zero-shot"
     )
     parser.add_argument("--data-path", required=True, help="Path to dataset folder (class subfolders)")
     parser.add_argument(
@@ -36,7 +36,7 @@ def main():
             "folder/class_index/class_name"
         ),
     )
-    parser.add_argument("--model", choices=("clip", "blip"), default="clip")
+    parser.add_argument("--model", choices=("clip", "blip", "siglip"), default="clip")
     parser.add_argument("--clip-model", default="ViT-B/16", help="CLIP model name for clip.load")
     parser.add_argument(
         "--clip-checkpoint",
@@ -83,6 +83,8 @@ def main():
                         help="BLIP visual encoder size")
     parser.add_argument("--blip-last-heads", choices=("1", "native"), default="native",
                         help="BLIP final attention mode (use native for pretrained classification)")
+    parser.add_argument("--siglip-model", default="google/siglip-base-patch16-224",
+                        help="Hugging Face model ID or local directory (used with --model siglip)")
     parser.add_argument("--device", default=None, help="cuda or cpu")
     args = parser.parse_args()
 
@@ -136,7 +138,7 @@ def main():
         )
         classifier = None
         description = "Classifying with CLIP"
-    else:
+    elif args.model == "blip":
         if not args.blip_checkpoint.is_file():
             raise FileNotFoundError(f"--blip-checkpoint not found: {args.blip_checkpoint}")
         if not (args.blip_root / "models" / "blip_itm.py").is_file():
@@ -171,6 +173,30 @@ def main():
         zero_shot_weights = None
         clip_model = None
         description = "Classifying with BLIP"
+    else:
+        from types import SimpleNamespace
+
+        from siglip_attack_adapter import (
+            SigLIPAttackAdapter, build_zero_shot_siglip_classifier,
+        )
+
+        adapter_args = SimpleNamespace(
+            model=args.siglip_model,
+            game_start_layer=-1,
+            rise_masks=2000,
+            rise_grid=8,
+            rise_prob=0.5,
+            rise_batch_size=50,
+            seed=42,
+        )
+        adapter = SigLIPAttackAdapter(adapter_args, device)
+        preprocess = adapter.preprocess
+        classifier = build_zero_shot_siglip_classifier(
+            adapter, classnames, args.prompt_template,
+        )
+        zero_shot_weights = None
+        clip_model = None
+        description = "Classifying with SigLIP"
 
     correct_samples = []
     num_total = 0
@@ -216,7 +242,12 @@ def main():
         os.makedirs(output_dir, exist_ok=True)
 
     payload = {
-        "model": f"CLIP-{args.clip_model}" if args.model == "clip" else f"BLIP-ViT-{args.vit}",
+        "model": (
+            f"CLIP-{args.clip_model}" if args.model == "clip"
+            else f"BLIP-ViT-{args.vit}" if args.model == "blip"
+            else f"SigLIP-{args.siglip_model}"
+        ),
+        "prompt_template": args.prompt_template,
         "device": device,
         "data_path": args.data_path,
         "index_json": args.index_json,

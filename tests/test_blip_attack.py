@@ -228,6 +228,15 @@ class BLIPAttackTests(unittest.TestCase):
                             sum(payload["rerun"][name]["auc"] for name in ("del", "ins")),
                         )
                     self.assertTrue((folder.parent / "run_config.json").is_file())
+                    if mode == "del" and method == "eclip":
+                        result_path = folder / "curve_information.json"
+                        result_path.unlink()
+                        self.assertTrue(runner._sample_outputs_are_complete(folder, args))
+                        with patch.object(
+                            runner.Image, "open",
+                            side_effect=AssertionError("completed sample was opened again"),
+                        ):
+                            runner.main()
 
     def test_no_clip_model_modules_imported(self):
         import sys
