@@ -238,6 +238,17 @@ class SiglipAttackTests(unittest.TestCase):
         )
         torch.testing.assert_close(cache["attention"], native_attention)
 
+    def test_attack_rejects_constant_gradeclip_instead_of_ranking_zero_map(self):
+        adapter = self.make_adapter()
+        image = torch.zeros(1, 3, 224, 224)
+        text = torch.ones(1, 8)
+        with patch(
+            "siglip_attack_adapter.gradient_maps",
+            return_value=({"gradeclip": torch.zeros(14, 14)}, 0.0),
+        ):
+            with self.assertRaisesRegex(ValueError, "arbitrary pixel ranking"):
+                adapter.generate_hm("eclip", image, text, ["bird"], Resize((224, 224)))
+
     def test_gradeclip_uses_pooling_probe_gradient_and_values(self):
         model = self.model
         image = torch.randn(1, 3, 224, 224)

@@ -62,6 +62,12 @@ implementation. The explainer and attack JSONs record `explainer_version`.
 The shared metric still uses softmax over class logits; that is separate from
 RISE's native sigmoid target.
 
+If Grad-ECLIP becomes constant, the runner logs the cosine, pooling gradient
+norm, query/key/value norms, locality range and signed contribution range.
+The attack stops rather than using an arbitrary ranking from an all-zero map.
+The standalone explainer still saves the map for inspection. This diagnostic
+does not replace ReLU with absolute values or fabricate a nonzero explanation.
+
 Run the CPU contract tests (random tiny models, no checkpoint downloads) with:
 
 ```bash

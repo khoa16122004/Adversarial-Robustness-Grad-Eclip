@@ -127,7 +127,15 @@ class SigLIPAttackAdapter(nn.Module):
             else:
                 maps, _ = gradient_maps(self.model, pixels, text_embedding, options)
                 saliency = maps[method]
-        saliency = normalize_map(saliency.detach().float())
+        saliency = saliency.detach().float()
+        if method == "gradeclip" and torch.isfinite(saliency).all():
+            if saliency.max().item() == saliency.min().item():
+                raise ValueError(
+                    f"SigLIP {hm_type} produced a constant heatmap for target {texts!r}. "
+                    "Attack stopped: a constant map gives an arbitrary pixel ranking. "
+                    "See the preceding 'Degenerate SigLIP gradeclip' diagnostic."
+                )
+        saliency = normalize_map(saliency)
         saliency = resize(saliency.unsqueeze(0))[0].clamp(0, 1)
         if not torch.isfinite(saliency).all():
             raise ValueError(f"{hm_type}: nonfinite resized SigLIP heatmap")

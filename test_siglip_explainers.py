@@ -176,10 +176,22 @@ def gradient_maps(model, pixel_values, text_feature, args):
             pooling[name].detach().transpose(1, 2).flatten(2)[0]
             for name in ("q", "k", "v")
         )
-        locality = normalize_map(
-            (F.normalize(query, dim=-1) * F.normalize(key, dim=-1)).sum(-1),
-        )
-        maps["gradeclip"] = (gradient * value * locality[:, None]).sum(-1).relu()
+        similarity = (F.normalize(query, dim=-1) * F.normalize(key, dim=-1)).sum(-1)
+        locality = normalize_map(similarity)
+        contributions = (gradient * value * locality[:, None]).sum(-1)
+        maps["gradeclip"] = contributions.relu()
+        if maps["gradeclip"].max().item() == maps["gradeclip"].min().item():
+            LOG.warning(
+                "Degenerate SigLIP gradeclip: cosine=%.6g, gradient_norm=%.6g, "
+                "query_norm=%.6g, key_norm=%.6g, value_norm=%.6g, "
+                "qk_range=[%.6g, %.6g], contribution_range=[%.6g, %.6g], "
+                "positive_patches=%d/%d. No attribution fallback was applied.",
+                score.detach().item(), gradient.norm().item(),
+                query.norm().item(), key.norm().item(), value.norm().item(),
+                similarity.min().item(), similarity.max().item(),
+                contributions.min().item(), contributions.max().item(),
+                (contributions > 0).sum().item(), contributions.numel(),
+            )
 
     if "gradcam" in args.methods:
         layer_input = cache["input"]
