@@ -238,7 +238,7 @@ def main():
         )
         heatmap = adapter.generate_hm(
             args.hm_type, x_adv_normalized, text_embedding, target_texts,
-            metric_resize, adapter.preprocess,
+            metric_resize,
         ).cpu()
 
         rerun_results = {}
