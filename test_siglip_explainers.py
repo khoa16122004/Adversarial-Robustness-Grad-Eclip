@@ -307,11 +307,17 @@ def main():
         raw_map = maps[method].float().cpu()
         if raw_map.ndim != 2 or not torch.isfinite(raw_map).all():
             raise ValueError(f"{method}: expected a finite 2D heatmap")
+        heatmap = F.interpolate(
+            normalize_map(raw_map)[None, None],
+            size=(raw_image.height, raw_image.width),
+            mode="bilinear", align_corners=False,
+        )[0, 0].clamp(0, 1)
         save_saliency_outputs(
-            normalize_map(raw_map).numpy(), raw_image, str(args.output), stem=method,
+            heatmap.numpy(), raw_image, str(args.output), stem=method,
         )
         metadata["maps"][method] = {
             "shape": list(raw_map.shape),
+            "heatmap_shape": list(heatmap.shape),
             "min": float(raw_map.min().item()),
             "max": float(raw_map.max().item()),
             "constant": bool(raw_map.max().item() == raw_map.min().item()),

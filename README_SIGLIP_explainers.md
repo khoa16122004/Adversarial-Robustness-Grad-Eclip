@@ -21,12 +21,14 @@ python test_siglip_explainers.py \
   --methods gradeclip game gradcam maskclip rise \
   --device cuda \
   --rise-masks 2000 \
-  --rise-batch-size 50
+  --batch-size 50
 ```
 
 The script checks its custom image encoder against `SiglipModel.get_image_features`
 before generating the maps. It saves each method's NumPy map, heatmap, and
-overlay, plus `summary.json`. SigLIP has no class token in its vision patch
+overlay, plus `summary.json`. Saved maps and overlays are resized to the
+original image dimensions; the summary records both patch-map and output shapes.
+SigLIP has no class token in its vision patch
 sequence, so GradeCAM-style locality and GAME relevance aggregate over the
 patch tokens instead of selecting a CLS token.
 The image encoder uses SigLIP's post-layer normalization and learned attention
