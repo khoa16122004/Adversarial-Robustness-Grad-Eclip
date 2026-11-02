@@ -41,4 +41,4 @@ python test_siglip_explainers.py \
   --methods "${methods[@]}" \
   --device cuda \
   --rise-masks "${RISE_MASKS:-2000}" \
-  --rise-batch-size "${RISE_BATCH_SIZE:-50}"
+  --batch-size "${RISE_BATCH_SIZE:-50}"

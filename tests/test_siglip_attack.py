@@ -12,7 +12,7 @@ from torchvision.transforms import Resize
 from siglip_attack_adapter import (
     CLIP_MEAN, CLIP_STD, SigLIPAttackAdapter, build_zero_shot_siglip_classifier,
 )
-from test_siglip_explainers import encode_image, gradient_maps
+from test_siglip_explainers import _pool_image, encode_image, gradient_maps, rise_map
 
 
 class TinySiglipAttention(nn.Module):
@@ -223,6 +223,77 @@ class SiglipAttackTests(unittest.TestCase):
             self.assertEqual(values.shape, (14, 14))
             self.assertTrue(torch.isfinite(values).all())
 
+    def test_pooling_forward_and_input_gradients_match_native_head(self):
+        head = self.model.vision_model.head
+        hidden = torch.randn(2, 4, 8, requires_grad=True)
+        actual, cache = _pool_image(head, hidden)
+        expected = head(hidden)
+        torch.testing.assert_close(actual, expected)
+        actual_gradient = torch.autograd.grad(actual.square().sum(), hidden)[0]
+        expected_gradient = torch.autograd.grad(expected.square().sum(), hidden)[0]
+        torch.testing.assert_close(actual_gradient, expected_gradient)
+        probe = head.probe.expand(2, -1, -1)
+        _, native_attention = head.attention(
+            probe, hidden, hidden, need_weights=True, average_attn_weights=False,
+        )
+        torch.testing.assert_close(cache["attention"], native_attention)
+
+    def test_gradeclip_uses_pooling_probe_gradient_and_values(self):
+        model = self.model
+        image = torch.randn(1, 3, 224, 224)
+        text = F.normalize(model.get_text_features(torch.tensor([[3, 1]])), dim=-1)
+        features, cache, _ = encode_image(model, image)
+        pool = cache["pooling"]
+        score = (F.normalize(features, dim=-1) @ text.T).sum()
+        gradient = torch.autograd.grad(score, pool["attended"])[0][0, 0]
+        query, key, value = (
+            pool[name].detach().transpose(1, 2).flatten(2)[0]
+            for name in ("q", "k", "v")
+        )
+        similarity = (F.normalize(query, dim=-1) * F.normalize(key, dim=-1)).sum(-1)
+        locality = (similarity - similarity.min()) / (
+            similarity.max() - similarity.min()
+        ).clamp_min(torch.finfo(similarity.dtype).eps)
+        expected = (gradient * value * locality[:, None]).sum(-1).relu().reshape(14, 14)
+        args = SimpleNamespace(game_start_layer=-1, methods=["gradeclip"])
+        maps, _ = gradient_maps(model, image, text, args)
+        torch.testing.assert_close(maps["gradeclip"], expected)
+
+    def test_game_propagates_pooling_relevance_through_backbone(self):
+        model = self.model
+        image = torch.randn(1, 3, 224, 224)
+        text = F.normalize(model.get_text_features(torch.tensor([[3, 1]])), dim=-1)
+        features, cache, attentions = encode_image(model, image, game_start=0)
+        score = (F.normalize(features, dim=-1) @ text.T).sum()
+        all_attention = [*attentions, cache["pooling"]["attention"]]
+        gradients = torch.autograd.grad(score, all_attention)
+        relevance = torch.eye(196).unsqueeze(0)
+        for attention, gradient in zip(attentions, gradients[:-1]):
+            cam = (attention * gradient).clamp_min(0).mean(dim=1)
+            relevance = (torch.eye(196).unsqueeze(0) + cam).bmm(relevance)
+        seed = (all_attention[-1] * gradients[-1]).clamp_min(0).mean(dim=1)
+        expected = seed.bmm(relevance)[0, 0].reshape(14, 14)
+        args = SimpleNamespace(game_start_layer=0, methods=["game"])
+        maps, _ = gradient_maps(model, image, text, args)
+        torch.testing.assert_close(maps["game"], expected)
+
+    def test_rise_weights_masks_with_sigmoid_probability(self):
+        args = SimpleNamespace(
+            seed=7, rise_masks=4, rise_grid=2, rise_prob=0.5, batch_size=2,
+        )
+        image = torch.ones(1, 3, 8, 8)
+        text = torch.ones(1, 8)
+        with patch("test_siglip_explainers.encode_image", return_value=(text, {}, [])), \
+                patch("test_siglip_explainers.image_text_logits") as logits:
+            logits.return_value = torch.full((2, 1), -2.0)
+            negative = rise_map(self.model, image, text, args)
+            logits.return_value = torch.zeros(2, 1)
+            zero = rise_map(self.model, image, text, args)
+        self.assertGreater(negative.sum().item(), 0)
+        torch.testing.assert_close(
+            negative, zero * (torch.tensor(-2.0).sigmoid() / 0.5),
+        )
+
     def test_real_transformers_siglip_forward_and_explainers(self):
         from transformers import SiglipConfig, SiglipModel
 
@@ -243,6 +314,9 @@ class SiglipAttackTests(unittest.TestCase):
         features, _, _ = encode_image(model, image)
         expected = model.vision_model(pixel_values=image, return_dict=True).pooler_output
         torch.testing.assert_close(features, expected, rtol=1e-4, atol=1e-5)
+        actual_gradient = torch.autograd.grad(features.square().sum(), image, retain_graph=True)[0]
+        native_gradient = torch.autograd.grad(expected.square().sum(), image)[0]
+        torch.testing.assert_close(actual_gradient, native_gradient, rtol=1e-4, atol=1e-5)
         text = F.normalize(model.text_model(
             input_ids=torch.tensor([[3, 1, 1, 1]]), return_dict=True,
         ).pooler_output, dim=-1)

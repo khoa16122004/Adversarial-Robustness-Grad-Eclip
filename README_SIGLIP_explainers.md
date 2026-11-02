@@ -28,12 +28,49 @@ The script checks its custom image encoder against `SiglipModel.get_image_featur
 before generating the maps. It saves each method's NumPy map, heatmap, and
 overlay, plus `summary.json`. Saved maps and overlays are resized to the
 original image dimensions; the summary records both patch-map and output shapes.
-SigLIP has no class token in its vision patch
-sequence, so GradeCAM-style locality and GAME relevance aggregate over the
-patch tokens instead of selecting a CLS token.
+SigLIP has no class token in its vision patch sequence. The learned pooling
+probe is its image-level query; the explainers use that probe instead of
+inventing an average patch query.
 The image encoder uses SigLIP's post-layer normalization and learned attention
 pooling head, not CLIP's pre-layer normalization or visual projection.
-MaskCLIP-style dense features apply this pooling head independently to each patch.
+
+The `siglip-pooling-v2` adaptations are:
+
+- Grad-ECLIP uses the gradient of cosine similarity with respect to the pooling
+  attention's concatenated value output, the pooling value vectors, and
+  min-max-normalized cosine locality between the projected probe and patch keys.
+- GAME propagates positive gradient-weighted pooling attention through the
+  selected backbone attention rollout; it does not average all output rows.
+- MaskCLIP uses the pooling values, its output projection and residual MLP as
+  a dense value-only branch, weighted by probe/key cosine locality.
+- GradCAM keeps the final backbone block input as its spatial feature layer.
+- RISE weights masks with `sigmoid(native_logit)`, not signed logits with an
+  additive bias. Gradient methods use cosine similarity as in BLIP/CLIP, avoiding
+  sigmoid saturation. RISE therefore uses SigLIP's native probability target,
+  unlike the existing BLIP cosine-based RISE; record this difference in comparisons.
+
+These are architecture-specific adaptations, not a claim that the original
+CLS-based algorithms transfer unchanged or guarantee better localization.
+For pretrained-model comparisons, use BLIP's `--last-heads native`; the BLIP
+single-head notebook adaptation intentionally changes its model forward.
+Keep prompts, data, image size, attack parameters, RISE masks and layer-selection
+policies matched across models. This update leaves BLIP/CLIP behavior unchanged.
+
+Use a **new output directory** when rerunning attacks with v2: the existing
+file-based resume check can otherwise skip samples produced by the old
+implementation. The explainer and attack JSONs record `explainer_version`.
+The shared metric still uses softmax over class logits; that is separate from
+RISE's native sigmoid target.
+
+Run the CPU contract tests (random tiny models, no checkpoint downloads) with:
+
+```bash
+python -m unittest discover -s tests -p test_siglip_attack.py
+```
+
+They check native pooling outputs/gradients, pooling attention, the Grad-ECLIP
+and GAME equations, RISE probability weighting, finite maps, and preservation of
+the attack gradient graph. They do not measure localization on real images.
 
 Both classification and adversarial scoring default to the same zero-shot
 prompt template used by the existing CLIP pipeline: `a photo of {}`. Override
