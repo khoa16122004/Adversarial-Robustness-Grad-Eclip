@@ -12,7 +12,9 @@ from torchvision.transforms import Resize
 from siglip_attack_adapter import (
     CLIP_MEAN, CLIP_STD, SigLIPAttackAdapter, build_zero_shot_siglip_classifier,
 )
-from test_siglip_explainers import _pool_image, encode_image, gradient_maps, rise_map
+from test_siglip_explainers import (
+    _pool_image, _pooling_gradeclip, encode_image, gradient_maps, rise_map,
+)
 
 
 class TinySiglipAttention(nn.Module):
@@ -257,18 +259,53 @@ class SiglipAttackTests(unittest.TestCase):
         pool = cache["pooling"]
         score = (F.normalize(features, dim=-1) @ text.T).sum()
         gradient = torch.autograd.grad(score, pool["attended"])[0][0, 0]
-        query, key, value = (
-            pool[name].detach().transpose(1, 2).flatten(2)[0]
-            for name in ("q", "k", "v")
-        )
-        similarity = (F.normalize(query, dim=-1) * F.normalize(key, dim=-1)).sum(-1)
-        locality = (similarity - similarity.min()) / (
-            similarity.max() - similarity.min()
-        ).clamp_min(torch.finfo(similarity.dtype).eps)
-        expected = (gradient * value * locality[:, None]).sum(-1).relu().reshape(14, 14)
+        expected = torch.zeros(196)
+        head_dim = pool["v"].shape[-1]
+        for head in range(pool["v"].shape[1]):
+            query = pool["q"][0, head, 0].detach()
+            keys = pool["k"][0, head].detach()
+            values = pool["v"][0, head].detach()
+            similarity = F.cosine_similarity(query[None], keys, dim=-1)
+            locality = (similarity - similarity.min()) / (
+                similarity.max() - similarity.min()
+            ).clamp_min(torch.finfo(similarity.dtype).eps)
+            channels = gradient[head * head_dim:(head + 1) * head_dim]
+            expected += (channels * values).sum(-1) * locality
+        expected = expected.relu().reshape(14, 14)
         args = SimpleNamespace(game_start_layer=-1, methods=["gradeclip"])
         maps, _ = gradient_maps(model, image, text, args)
         torch.testing.assert_close(maps["gradeclip"], expected)
+
+    def test_gradeclip_keeps_head_localities_separate_and_relu_after_summing(self):
+        pooling = {
+            "q": torch.tensor([[[[1., 0.]], [[1., 0.]]]]),
+            "k": torch.tensor([[[[1., 0.], [-1., 0.]],
+                                [[-1., 0.], [1., 0.]]]]),
+            "v": torch.tensor([[[[2., 0.], [100., 0.]],
+                                [[100., 0.], [-3., 0.]]]]),
+        }
+        gradient = torch.tensor([[[1., 0., 1., 0.]]])
+        saliency, signed, _ = _pooling_gradeclip(pooling, gradient)
+        torch.testing.assert_close(signed, torch.tensor([[2., -3.]]))
+        torch.testing.assert_close(saliency, torch.tensor([[2., 0.]]))
+
+        # A head's positive Q/K scale must not change its cosine locality.
+        scaled = {name: value.clone() for name, value in pooling.items()}
+        scaled["q"][:, 0] *= 100
+        scaled["k"][:, 0] *= 100
+        torch.testing.assert_close(_pooling_gradeclip(scaled, gradient)[0], saliency)
+
+    def test_pooling_attention_gradient_matches_value_channel_contributions(self):
+        hidden = torch.randn(1, 4, 8, requires_grad=True)
+        features, pool = _pool_image(self.model.vision_model.head, hidden)
+        score = features.square().sum()
+        gradient, attention_gradient = torch.autograd.grad(
+            score, (pool["attended"], pool["attention"]),
+        )
+        heads, head_dim = pool["v"].shape[1], pool["v"].shape[-1]
+        per_head_gradient = gradient.reshape(1, 1, heads, head_dim).transpose(1, 2)
+        expected = (per_head_gradient * pool["v"]).sum(-1).unsqueeze(2)
+        torch.testing.assert_close(attention_gradient, expected)
 
     def test_game_propagates_pooling_relevance_through_backbone(self):
         model = self.model

@@ -34,11 +34,16 @@ inventing an average patch query.
 The image encoder uses SigLIP's post-layer normalization and learned attention
 pooling head, not CLIP's pre-layer normalization or visual projection.
 
-The `siglip-pooling-v2` adaptations are:
+The `siglip-pooling-v3-headwise` adaptations are:
 
 - Grad-ECLIP uses the gradient of cosine similarity with respect to the pooling
   attention's concatenated value output, the pooling value vectors, and
-  min-max-normalized cosine locality between the projected probe and patch keys.
+  cosine locality between the projected probe and patch keys **within each head**.
+  Locality is min-max normalized over patches independently per head and paired
+  with that head's gradient/value channels. Signed head contributions are summed
+  before a single ReLU. Constant-locality heads contribute zero with a warning.
+  The earlier v2 implementation instead computed one locality after concatenating
+  heads; it should not be mixed with these results.
 - GAME propagates positive gradient-weighted pooling attention through the
   selected backbone attention rollout; it does not average all output rows.
 - MaskCLIP uses the pooling values, its output projection and residual MLP as
@@ -56,7 +61,7 @@ single-head notebook adaptation intentionally changes its model forward.
 Keep prompts, data, image size, attack parameters, RISE masks and layer-selection
 policies matched across models. This update leaves BLIP/CLIP behavior unchanged.
 
-Use a **new output directory** when rerunning attacks with v2: the existing
+Use a **new output directory** when rerunning attacks with v3: the existing
 file-based resume check can otherwise skip samples produced by the old
 implementation. The explainer and attack JSONs record `explainer_version`.
 The shared metric still uses softmax over class logits; that is separate from

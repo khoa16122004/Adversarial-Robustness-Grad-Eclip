@@ -12,7 +12,7 @@ from pathlib import Path
 METHODS = ("gradeclip", "game", "gradcam", "maskclip", "rise")
 LOG = logging.getLogger("siglip-explainers")
 REPO_ROOT = Path(__file__).resolve().parent
-EXPLAINER_VERSION = "siglip-pooling-v2"
+EXPLAINER_VERSION = "siglip-pooling-v3-headwise"
 
 
 def parse_args():
@@ -150,6 +150,25 @@ def image_text_logits(model, image_features, text_features):
     return model.logit_scale.exp() * (image_features @ text_features.T) + model.logit_bias
 
 
+def _pooling_gradeclip(pooling, gradient):
+    import torch
+    import torch.nn.functional as F
+
+    query, key, value = (pooling[name].detach() for name in ("q", "k", "v"))
+    batch, heads, patches, head_dim = value.shape
+    head_gradient = gradient.detach().reshape(batch, 1, heads, head_dim).transpose(1, 2)
+    similarity = (F.normalize(query, dim=-1) * F.normalize(key, dim=-1)).sum(-1)
+    low = similarity.amin(dim=-1, keepdim=True)
+    high = similarity.amax(dim=-1, keepdim=True)
+    locality = (similarity - low) / (high - low).clamp_min(
+        torch.finfo(similarity.dtype).eps,
+    )
+    # Keep each head's locality paired with its own value channels and gradient.
+    per_head = (head_gradient * value).sum(dim=-1) * locality
+    contributions = per_head.sum(dim=1)
+    return contributions.relu(), contributions, similarity
+
+
 def gradient_maps(model, pixel_values, text_feature, args, *, diagnostics=None):
     import torch
     import torch.nn.functional as F
@@ -171,27 +190,33 @@ def gradient_maps(model, pixel_values, text_feature, args, *, diagnostics=None):
     maps = {}
 
     if "gradeclip" in args.methods:
-        gradient = torch.autograd.grad(score, pooling["attended"], retain_graph=True)[0][0, 0]
-        query, key, value = (
-            pooling[name].detach().transpose(1, 2).flatten(2)[0]
-            for name in ("q", "k", "v")
+        gradient = torch.autograd.grad(score, pooling["attended"], retain_graph=True)[0]
+        saliency, contributions, similarity = _pooling_gradeclip(pooling, gradient)
+        query, key, value = (pooling[name].detach() for name in ("q", "k", "v"))
+        maps["gradeclip"] = saliency[0]
+        constant_heads = (
+            similarity.amax(dim=-1) == similarity.amin(dim=-1)
         )
-        similarity = (F.normalize(query, dim=-1) * F.normalize(key, dim=-1)).sum(-1)
-        locality = normalize_map(similarity)
-        contributions = (gradient * value * locality[:, None]).sum(-1)
-        maps["gradeclip"] = contributions.relu()
+        if constant_heads.any():
+            LOG.warning(
+                "SigLIP gradeclip: %d/%d pooling heads have constant query/key "
+                "locality and contribute zero.",
+                constant_heads.sum().item(), constant_heads.numel(),
+            )
         if maps["gradeclip"].max().item() == maps["gradeclip"].min().item():
             diagnostic = (
                 "Degenerate SigLIP gradeclip: cosine=%.6g, gradient_norm=%.6g, "
                 "query_norm=%.6g, key_norm=%.6g, value_norm=%.6g, "
                 "qk_range=[%.6g, %.6g], contribution_range=[%.6g, %.6g], "
-                "positive_patches=%d/%d. No attribution fallback was applied."
+                "positive_patches=%d/%d, constant_locality_heads=%d/%d. "
+                "No attribution fallback was applied."
             ) % (
                 score.detach().item(), gradient.norm().item(),
                 query.norm().item(), key.norm().item(), value.norm().item(),
                 similarity.min().item(), similarity.max().item(),
                 contributions.min().item(), contributions.max().item(),
                 (contributions > 0).sum().item(), contributions.numel(),
+                constant_heads.sum().item(), constant_heads.numel(),
             )
             LOG.warning("%s", diagnostic)
             if diagnostics is not None:
