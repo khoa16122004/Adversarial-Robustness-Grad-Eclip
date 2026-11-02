@@ -29,7 +29,7 @@ process_batch_size="${PROCESS_BATCH_SIZE:-32}"
 rise_masks="${RISE_MASKS:-2000}"
 rise_batch_size="${RISE_BATCH_SIZE:-50}"
 pgd_steps="${PGD_STEPS:-50}"
-prompt_template="${PROMPT_TEMPLATE:-This is a photo of {}.}"
+prompt_template="${PROMPT_TEMPLATE:-a photo of {}}"
 read -r -a hm_types <<< "${HM_TYPES:-eclip game gradcam maskclip rise}"
 read -r -a epsilons <<< "${EPSILONS:-2 4 8 16}"
 

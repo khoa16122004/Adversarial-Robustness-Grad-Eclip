@@ -30,9 +30,10 @@ overlay, plus `summary.json`. SigLIP has no class token in its vision patch
 sequence, so GradeCAM-style locality and GAME relevance aggregate over the
 patch tokens instead of selecting a CLS token.
 
-The default zero-shot text template follows the Transformers documentation:
-`This is a photo of {}.` For the explainer smoke script, `--text` is passed as
-provided.
+Both classification and adversarial scoring default to the same zero-shot
+prompt template used by the existing CLIP pipeline: `a photo of {}`. Override
+it with `--prompt-template` if needed. For the explainer smoke script, `--text`
+is passed as provided.
 
 ## Adversarial scoring
 
@@ -60,6 +61,25 @@ python adv_score_SIGLIP.py \
   --eps 4 --alpha 1 --pgd-steps 2 \
   --process-batch-size 8
 ```
+
+First create a matching sample list with the SigLIP classifier:
+
+```bash
+python classify.py \
+  --model siglip \
+  --siglip-model google/siglip-base-patch16-224 \
+  --data-path /path/to/ImageNet/val \
+  --index-json imgnet1k_label.json \
+  --max-correct-samples 100 \
+  --batch-size 32 \
+  --prompt-template "a photo of {}" \
+  --output classification_reuslt/imagenet/siglip_100_summary.json \
+  --sample-output classification_reuslt/imagenet/siglip_100.json \
+  --device cuda
+```
+
+`script_sh/classify_siglip.sh` provides the equivalent Slurm launcher. The
+resulting `siglip_100.json` can be passed directly to the adversarial runner.
 
 The runner supports `eclip`/`gradeclip`, `game`, `gradcam`, `maskclip`, and
 `rise`; `--mode` accepts `del`, `ins`, and `del+ins`. The runner maps

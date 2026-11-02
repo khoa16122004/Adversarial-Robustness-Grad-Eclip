@@ -26,7 +26,7 @@ num_samples="${NUM_SAMPLES:-100}"
 batch_size="${BATCH_SIZE:-32}"
 model="${MODEL:-google/siglip-base-patch16-224}"
 output_dir="${OUTPUT_DIR:-$repo_root/classification_reuslt/imagenet}"
-prompt_template="${PROMPT_TEMPLATE:-a photo of \{\}}"
+prompt_template="${PROMPT_TEMPLATE:-a photo of {}}"
 
 export MPLBACKEND=Agg
 export PYTHONUNBUFFERED=1

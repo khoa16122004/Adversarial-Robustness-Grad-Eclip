@@ -84,7 +84,7 @@ def parse_args():
     parser.add_argument("--img-dir", required=True)
     parser.add_argument("--sample-path", required=True)
     parser.add_argument("--classnames-path")
-    parser.add_argument("--prompt-template", default="This is a photo of {}.")
+    parser.add_argument("--prompt-template", default="a photo of {}")
     parser.add_argument("--save-process", action="store_true")
     parser.add_argument("--eps", type=float, default=32.0)
     parser.add_argument("--alpha", type=float, default=8.0)
