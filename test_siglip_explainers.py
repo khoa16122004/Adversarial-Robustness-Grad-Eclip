@@ -169,6 +169,64 @@ def _pooling_gradeclip(pooling, gradient):
     return contributions.relu(), contributions, similarity
 
 
+def audit_pooling_gradeclip(model, pixel_values, text_feature):
+    """Compare native and instrumented computations on the exact failing input."""
+    import torch
+    import torch.nn.functional as F
+
+    with torch.enable_grad():
+        image = pixel_values.detach().requires_grad_(True)
+        text = F.normalize(text_feature.detach(), dim=-1)
+        features, cache, _ = encode_image(model, image)
+        native_features = model.vision_model(
+            pixel_values=image, return_dict=True,
+        ).pooler_output
+        score = (F.normalize(features, dim=-1) @ text.T).sum()
+        native_score = (F.normalize(native_features, dim=-1) @ text.T).sum()
+        pool = cache["pooling"]
+        gradient, input_gradient, attention_gradient = torch.autograd.grad(
+            score, (pool["attended"], image, pool["attention"]),
+        )
+        native_input_gradient = torch.autograd.grad(native_score, image)[0]
+        _, contributions, similarity = _pooling_gradeclip(pool, gradient)
+        heads, head_dim = pool["v"].shape[1], pool["v"].shape[-1]
+        head_gradient = gradient.reshape(1, 1, heads, head_dim).transpose(1, 2)
+        value_contributions = (head_gradient * pool["v"].detach()).sum(-1)
+        attention_expected = value_contributions.unsqueeze(2)
+        low = similarity.amin(-1, keepdim=True)
+        locality = (similarity - low) / (
+            similarity.amax(-1, keepdim=True) - low
+        ).clamp_min(torch.finfo(similarity.dtype).eps)
+        per_head = value_contributions * locality
+
+    def comparison(actual, expected):
+        finite = bool(torch.isfinite(actual).all() and torch.isfinite(expected).all())
+        return {
+            "finite": finite,
+            "matches": finite and torch.allclose(actual, expected, rtol=1e-4, atol=1e-5),
+            "max_abs_error": float((actual - expected).abs().max().item()),
+        }
+
+    report = {
+        "explainer_version": EXPLAINER_VERSION,
+        "features": comparison(features, native_features),
+        "input_gradient": comparison(input_gradient, native_input_gradient),
+        "pooling_attention_gradient": comparison(attention_gradient, attention_expected),
+        "native_cosine": float(native_score.item()),
+        "head_contribution_min": per_head.amin(-1)[0].tolist(),
+        "head_contribution_max": per_head.amax(-1)[0].tolist(),
+        "head_positive_patches": (per_head > 0).sum(-1)[0].tolist(),
+        "positive_patches_after_head_sum": int((contributions > 0).sum().item()),
+    }
+    tensors = {
+        "pixel_values": image.detach().cpu(),
+        "text_feature": text.detach().cpu(),
+        "signed_per_head": per_head.detach().cpu(),
+        "signed_contributions": contributions.detach().cpu(),
+    }
+    return report, tensors
+
+
 def gradient_maps(model, pixel_values, text_feature, args, *, diagnostics=None):
     import torch
     import torch.nn.functional as F

@@ -25,6 +25,10 @@ CLIP_MEAN = (0.48145466, 0.4578275, 0.40821073)
 CLIP_STD = (0.26862954, 0.26130258, 0.27577711)
 
 
+class DegenerateSigLIPHeatmapError(ValueError):
+    pass
+
+
 def load_model(args, device):
     try:
         from transformers import SiglipModel, SiglipProcessor
@@ -133,10 +137,10 @@ class SigLIPAttackAdapter(nn.Module):
         saliency = saliency.detach().float()
         if method == "gradeclip" and torch.isfinite(saliency).all():
             if saliency.max().item() == saliency.min().item():
-                raise ValueError(
+                raise DegenerateSigLIPHeatmapError(
                     f"SigLIP {hm_type} produced a constant heatmap for target {texts!r}. "
-                    "Attack stopped: a constant map gives an arbitrary pixel ranking. "
-                    f"Diagnostics: {diagnostics}"
+                    "A constant map gives an arbitrary pixel ranking. "
+                    f"Diagnostics: {diagnostics}",
                 )
         saliency = normalize_map(saliency)
         saliency = resize(saliency.unsqueeze(0))[0].clamp(0, 1)

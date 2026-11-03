@@ -18,7 +18,8 @@ from RISE.evaluation import (
     AdversarialCausalMetric, CausalMetric, JointAdversarialCausalMetric, auc,
 )
 from siglip_attack_adapter import (
-    HM_METHODS, SigLIPAttackAdapter, build_zero_shot_siglip_classifier, generate_hm,
+    DegenerateSigLIPHeatmapError, HM_METHODS, SigLIPAttackAdapter,
+    build_zero_shot_siglip_classifier, generate_hm,
 )
 from test_siglip_explainers import EXPLAINER_VERSION, REPO_ROOT
 from util import (
@@ -202,6 +203,7 @@ def main():
     _write_json_atomic(config_path, config)
 
     skipped_samples = 0
+    degenerate_samples = 0
     for folder_name, image_name in tqdm(samples.items()):
         sample_dir = output_dir / folder_name
         if _sample_outputs_are_complete(sample_dir, args):
@@ -244,35 +246,44 @@ def main():
         def explain_attack_step(raw_model, hm_type, image, embedding, texts, resize, preprocess):
             nonlocal explanation_step
             explanation_step += 1
-            try:
-                return generate_hm(
-                    raw_model, hm_type, image, embedding, texts, resize, preprocess,
-                )
-            except ValueError as exc:
-                raise ValueError(
-                    f"Sample {folder_name!r}, image {image_name!r}, "
-                    f"PGD explanation step {explanation_step}/{args.pgd_steps}, "
-                    f"eps={args.eps}, alpha={args.alpha}: {exc}"
-                ) from exc
+            return generate_hm(
+                raw_model, hm_type, image, embedding, texts, resize, preprocess,
+            )
 
-        x_adv, details = attack.single_run(
-            image_raw, explain_attack_step, eps=args.eps / 255.0, alpha=args.alpha / 255.0,
-            pgd_steps=args.pgd_steps, process_batch_size=args.process_batch_size,
-        )
+        try:
+            x_adv, details = attack.single_run(
+                image_raw, explain_attack_step, eps=args.eps / 255.0, alpha=args.alpha / 255.0,
+                pgd_steps=args.pgd_steps, process_batch_size=args.process_batch_size,
+            )
+        except DegenerateSigLIPHeatmapError as exc:
+            degenerate_samples += 1
+            logging.warning(
+                "Skipping sample %r (%s), PGD step %d/%d: %s",
+                folder_name, image_name, explanation_step, args.pgd_steps, exc,
+            )
+            continue
         x_adv = x_adv.detach().cpu()
         if not torch.isfinite(x_adv).all():
             raise ValueError("Attack returned a nonfinite image")
         if (x_adv - image_raw.cpu()).abs().max().item() > args.eps / 255.0 + 1e-6:
             raise ValueError("Attack exceeded the requested L-infinity perturbation bound")
-        save_image(x_adv, str(sample_dir / image_filename))
         x_adv_normalized = normalize_ImageNet1k(x_adv)
         _, _, adv_label, adv_confidence = predict_zero_shot_clip(
             classifier, x_adv_normalized, device,
         )
-        heatmap = adapter.generate_hm(
-            args.hm_type, x_adv_normalized, text_embedding, target_texts,
-            metric_resize,
-        ).cpu()
+        try:
+            heatmap = adapter.generate_hm(
+                args.hm_type, x_adv_normalized, text_embedding, target_texts,
+                metric_resize,
+            ).cpu()
+        except DegenerateSigLIPHeatmapError as exc:
+            degenerate_samples += 1
+            logging.warning(
+                "Skipping sample %r (%s), post-attack explanation: %s",
+                folder_name, image_name, exc,
+            )
+            continue
+        save_image(x_adv, str(sample_dir / image_filename))
 
         rerun_results = {}
         for mode in ("del", "ins"):
@@ -331,7 +342,10 @@ def main():
             payload["combined_score"] = rerun_results["del"]["auc"] + rerun_results["ins"]["auc"]
             payload["score_formula"] = "joint_del_auc + joint_ins_auc"
         _write_json_atomic(sample_dir / "curve_information.json", payload)
-    logging.info("Skipped %d completed samples", skipped_samples)
+    logging.info(
+        "Skipped %d completed samples and %d samples with degenerate heatmaps",
+        skipped_samples, degenerate_samples,
+    )
 
 
 if __name__ == "__main__":

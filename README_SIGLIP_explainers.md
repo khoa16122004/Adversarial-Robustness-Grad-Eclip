@@ -73,9 +73,14 @@ RISE's native sigmoid target.
 
 If Grad-ECLIP becomes constant, the runner logs the cosine, pooling gradient
 norm, query/key/value norms, locality range and signed contribution range.
-The attack stops rather than using an arbitrary ranking from an all-zero map.
+The attack runner skips that sample and continues with the next one, both during
+PGD and during the final explanation. It logs the sample and phase/step, reports
+the total skipped count, and does not write a successful result for that sample.
+Other errors still propagate normally. A later run retries these incomplete samples.
 The standalone explainer still saves the map for inspection. This diagnostic
 does not replace ReLU with absolute values or fabricate a nonzero explanation.
+No native parity audit or diagnostic tensor files are generated automatically
+when skipping a sample.
 
 Run the CPU contract tests (random tiny models, no checkpoint downloads) with:
 

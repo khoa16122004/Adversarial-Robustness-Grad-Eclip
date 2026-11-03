@@ -13,7 +13,8 @@ from siglip_attack_adapter import (
     CLIP_MEAN, CLIP_STD, SigLIPAttackAdapter, build_zero_shot_siglip_classifier,
 )
 from test_siglip_explainers import (
-    _pool_image, _pooling_gradeclip, encode_image, gradient_maps, rise_map,
+    _pool_image, _pooling_gradeclip, audit_pooling_gradeclip,
+    encode_image, gradient_maps, rise_map,
 )
 
 
@@ -83,11 +84,12 @@ class TinySiglipVision(nn.Module):
         self.post_layernorm = nn.LayerNorm(8)
         self.head = TinySiglipPoolingHead()
 
-    def forward(self, pixels):
-        hidden = self.embeddings(pixels)
+    def forward(self, pixel_values, return_dict=False):
+        hidden = self.embeddings(pixel_values)
         for layer in self.encoder.layers:
             hidden = layer(hidden, attention_mask=None)
-        return self.head(self.post_layernorm(hidden))
+        features = self.head(self.post_layernorm(hidden))
+        return SimpleNamespace(pooler_output=features) if return_dict else features
 
 
 class TinySiglipPoolingHead(nn.Module):
@@ -306,6 +308,15 @@ class SiglipAttackTests(unittest.TestCase):
         per_head_gradient = gradient.reshape(1, 1, heads, head_dim).transpose(1, 2)
         expected = (per_head_gradient * pool["v"]).sum(-1).unsqueeze(2)
         torch.testing.assert_close(attention_gradient, expected)
+
+    def test_failure_audit_compares_native_computation_on_same_input(self):
+        image = torch.randn(1, 3, 224, 224)
+        text = torch.randn(1, 8)
+        report, tensors = audit_pooling_gradeclip(self.model, image, text)
+        for key in ("features", "input_gradient", "pooling_attention_gradient"):
+            self.assertTrue(report[key]["matches"])
+        torch.testing.assert_close(tensors["pixel_values"], image)
+        self.assertEqual(tensors["signed_per_head"].shape, (1, 2, 196))
 
     def test_game_propagates_pooling_relevance_through_backbone(self):
         model = self.model
