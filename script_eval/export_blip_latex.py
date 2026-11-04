@@ -4,8 +4,12 @@ import argparse
 import json
 import logging
 import math
+import os
 import statistics
 from pathlib import Path
+
+import numpy as np
+from scipy.stats import spearmanr
 
 
 DATASETS = (
@@ -82,7 +86,85 @@ def identify(path, root, data):
     return dataset, explainer, next(iter(attacks), None), epsilon
 
 
-def collect_metrics(root, epsilon):
+def result_files(root, epsilon):
+    def on_error(error):
+        raise error
+
+    for directory, subdirs, filenames in os.walk(root, onerror=on_error):
+        subdirs[:] = sorted(
+            name for name in subdirs
+            if not name.startswith(("steps_", "eval_curve_summary"))
+            and (not name.lower().startswith("eps_") or name.lower() == f"eps_{epsilon}")
+        )
+        for filename in sorted(filenames):
+            yield Path(directory) / filename
+
+
+def find_saliency(sample_dir, explainer, attack):
+    aliases = next(aliases for name, aliases in EXPLAINERS if name == explainer)
+    prefixes = {
+        "IOA": "ins", "DOA": "del", "IOA+DOA": "joint",
+    }
+    prefix = prefixes.get(attack)
+    for pattern in (
+        f"{prefix}_del_adv_{{alias}}_saliency.npy" if prefix else None,
+        "{alias}_saliency.npy",
+        "{alias}_heatmap.npy",
+    ):
+        if pattern is None:
+            continue
+        candidates = [
+            directory / pattern.format(alias=alias)
+            for directory in (sample_dir, sample_dir / "saliency")
+            for alias in sorted(aliases)
+            if (directory / pattern.format(alias=alias)).is_file()
+        ]
+        if len(candidates) > 1:
+            raise ValueError(f"Ambiguous saliency maps for {sample_dir}: {candidates}")
+        if candidates:
+            return candidates[0]
+    return None
+
+
+def index_clean_maps(root, epsilon):
+    clean_maps = {}
+    for path in result_files(root, epsilon):
+        if path.suffix != ".npy":
+            continue
+        dataset, explainer, attack, file_epsilon = identify(path, root, {})
+        if attack != "Without Attack" or dataset is None or explainer is None:
+            continue
+        sample_dir = path.parent.parent if path.parent.name == "saliency" else path.parent
+        selected = find_saliency(sample_dir, explainer, attack)
+        if selected != path:
+            continue
+        key = (dataset, explainer, sample_dir.name)
+        previous = clean_maps.get(key)
+        if previous is not None and previous[0] != path:
+            if previous[1] == file_epsilon:
+                raise ValueError(f"Duplicate clean sample {key}: {previous[0]} and {path}")
+            if previous[1] is not None:
+                continue
+        clean_maps[key] = (path, file_epsilon)
+    return {key: value[0] for key, value in clean_maps.items()}
+
+
+def saliency_spearman(clean_path, attack_path):
+    maps = []
+    for path in (clean_path, attack_path):
+        values = np.load(path, allow_pickle=False).squeeze()
+        if values.ndim != 2 or not np.isfinite(values).all():
+            raise ValueError(f"Expected a finite 2D saliency map: {path}")
+        maps.append(values)
+    if maps[0].shape != maps[1].shape:
+        raise ValueError(f"Saliency shape mismatch: {clean_path} and {attack_path}")
+    if any(np.ptp(values) == 0 for values in maps):
+        logging.warning("Constant saliency map; SRC unavailable: %s / %s", clean_path, attack_path)
+        return None
+    return float(spearmanr(maps[0].ravel(), maps[1].ravel()).statistic)
+
+
+def collect_metrics(root, epsilon, clean_root=None):
     # Keep sample-level pairs: never subtract means over unmatched sample sets.
     samples = {}
     scanned = 0
@@ -90,7 +172,9 @@ def collect_metrics(root, epsilon):
         "curve_information.json", "insertion_information.json",
         "deletion_information.json", "road_deletion_information.json",
     }
-    for path in sorted(root.rglob("*.json")):
+    clean_maps = index_clean_maps(clean_root or root, epsilon)
+    logging.info("Indexed %d clean saliency maps for eps_%s", len(clean_maps), epsilon)
+    for path in result_files(root, epsilon):
         if path.name not in filenames:
             continue
         with path.open(encoding="utf-8") as stream:
@@ -136,7 +220,19 @@ def collect_metrics(root, epsilon):
             "curve_information.json (or named attack folders)."
         )
     values = {}
-    for (dataset, explainer, attack, _), record in samples.items():
+    for (dataset, explainer, attack, sample_dir), record in samples.items():
+        if attack != "Without Attack" and "SRC" not in record:
+            clean_path = clean_maps.get((dataset, explainer, sample_dir.name))
+            attack_path = find_saliency(sample_dir, explainer, attack)
+            if clean_path is None or attack_path is None:
+                logging.warning(
+                    "Missing clean/attack saliency pair; SRC blank: %s (clean=%s, attack=%s)",
+                    sample_dir, clean_path, attack_path,
+                )
+            else:
+                correlation = saliency_spearman(clean_path, attack_path)
+                if correlation is not None:
+                    record["SRC"] = correlation
         if "ins" in record and "del" in record:
             record["IMD"] = record["ins"] - record["del"]
         for metric in METRICS:
@@ -220,6 +316,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-root", type=Path, default=Path("BLIP_result"))
     parser.add_argument("--epsilon", required=True, help="Single pixel budget, e.g. 2 or eps_2")
+    parser.add_argument(
+        "--clean-root", type=Path,
+        help="Optional separate clean root: <dataset>/clean/<explainer>/<sample>/saliency/*.npy",
+    )
     parser.add_argument("--output-tex", type=Path)
     args = parser.parse_args()
     epsilon = args.epsilon.removeprefix("eps_")
@@ -229,7 +329,10 @@ def main():
     root = args.input_root.expanduser().resolve()
     if not root.is_dir():
         raise FileNotFoundError(f"Input root is not a directory: {root}")
-    means = collect_metrics(root, epsilon)
+    clean_root = args.clean_root.expanduser().resolve() if args.clean_root else None
+    if clean_root is not None and not clean_root.is_dir():
+        raise FileNotFoundError(f"Clean root is not a directory: {clean_root}")
+    means = collect_metrics(root, epsilon, clean_root)
     output = args.output_tex or root / f"blip_faithfulness_eps_{epsilon}.tex"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(build_table(means, epsilon), encoding="utf-8")
