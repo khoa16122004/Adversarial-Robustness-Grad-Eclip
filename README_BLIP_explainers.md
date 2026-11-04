@@ -181,7 +181,22 @@ Attack modes map to IOA (`ins`), DOA (`del`), and IOA+DOA (`del+ins`).
 IMD is computed per sample as insertion fair-AUC minus deletion fair-AUC, then
 averaged. Each curve is normalized by its own positive maximum, matching
 `run_eval.py`. Separate clean insertion/deletion JSON files are paired by sample
-directory. SRC is read only from an explicit numeric `spearman` field; ROAD is
+directory. SRC uses an explicit numeric `spearman` field when present; otherwise
+the exporter computes tie-aware Spearman correlation from matching clean and
+adversarial `.npy` maps, then averages sample correlations. This CPU-only step
+requires NumPy and SciPy. Matching uses dataset, explainer, and exact sample-folder
+name; map shapes must match (no resizing or truncation). Constant maps are
+undefined and reported as unavailable. Missing map pairs are warned and left blank.
+Clean maps are discovered under
+`<input-root>/<dataset>/clean/<explainer>/<sample>/saliency/<explainer>_saliency.npy`
+(also `clean_score` and `clean_causual_score`, optional epsilon folders, maps
+directly in the sample folder, and `<explainer>_heatmap.npy`).
+For a separate clean tree with the same dataset/clean/explainer layout, add
+`--clean-root /path/to/clean_results`. The exporter does not generate clean maps.
+Adversarial maps use the saved `<ins|del|joint>_del_adv_<explainer>_saliency.npy`
+or `del_xshift_<explainer>_saliency.npy` names. Only the selected epsilon is
+traversed, along with epsilon-independent clean results.
+ROAD is
 read from an explicit `road_fair_auc` field or `deletion_fair_auc` in a sibling
 `road_deletion_information.json`. Deletion AUC is never substituted for ROAD.
 Missing measurements remain blank, with warnings for missing dataset/attack

@@ -4,6 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import numpy as np
+
 
 SPEC = importlib.util.spec_from_file_location(
     "export_blip_latex",
@@ -14,6 +16,52 @@ SPEC.loader.exec_module(exporter)
 
 
 class ExportBLIPLatexTests(unittest.TestCase):
+    def test_spearman_from_clean_and_attack_maps(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            clean = root / "ImageNet" / "clean" / "eclip" / "sample" / "saliency"
+            clean.mkdir(parents=True)
+            clean_values = np.array([[1., 1.], [2., 3.]])
+            np.save(clean / "eclip_saliency.npy", clean_values)
+            for mode, prefix, values in (
+                ("ins", "ins", clean_values),
+                ("del", "del", -clean_values),
+                ("del+ins", "joint", np.ones((2, 2))),
+            ):
+                sample = root / "ImageNet" / "eps_2" / "eclip" / mode / "sample"
+                sample.mkdir(parents=True)
+                (sample / "curve_information.json").write_text(
+                    json.dumps({"attack_mode": mode}), encoding="utf-8"
+                )
+                np.save(sample / f"{prefix}_del_adv_eclip_saliency.npy", values)
+            other = root / "ImageNet" / "eps_8"
+            other.mkdir()
+            (other / "curve_information.json").write_text("not JSON", encoding="utf-8")
+            means = exporter.collect_metrics(root, "2")
+            self.assertAlmostEqual(means[("ImageNet", "GradECLIP", "IOA", "SRC")], 1)
+            self.assertAlmostEqual(means[("ImageNet", "GradECLIP", "DOA", "SRC")], -1)
+            self.assertNotIn(("ImageNet", "GradECLIP", "IOA+DOA", "SRC"), means)
+
+    def test_separate_clean_root_and_shape_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            clean_root = root / "clean_results"
+            sample = clean_root / "CUB" / "clean" / "game" / "sample"
+            sample.mkdir(parents=True)
+            clean_path = sample / "game_saliency.npy"
+            np.save(clean_path, np.array([[1., 2.], [3., 4.]]))
+            self.assertEqual(
+                exporter.index_clean_maps(clean_root, "16")[("CUB", "GAME", "sample")],
+                clean_path,
+            )
+            attack_path = root / "attack.npy"
+            np.save(attack_path, np.arange(6).reshape(2, 3))
+            with self.assertRaisesRegex(ValueError, "shape mismatch"):
+                exporter.saliency_spearman(clean_path, attack_path)
+            np.save(attack_path, np.array([[1., 2.], [3., float("nan")]]))
+            with self.assertRaisesRegex(ValueError, "finite 2D"):
+                exporter.saliency_spearman(clean_path, attack_path)
+
     def test_attack_separation_and_missing_cells(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

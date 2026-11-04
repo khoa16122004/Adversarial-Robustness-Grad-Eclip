@@ -108,6 +108,7 @@ def find_saliency(sample_dir, explainer, attack):
     prefix = prefixes.get(attack)
     for pattern in (
         f"{prefix}_del_adv_{{alias}}_saliency.npy" if prefix else None,
+        "del_xshift_{alias}_saliency.npy" if attack == "X-Shift" else None,
         "{alias}_saliency.npy",
         "{alias}_heatmap.npy",
     ):
@@ -161,7 +162,7 @@ def saliency_spearman(clean_path, attack_path):
     if any(np.ptp(values) == 0 for values in maps):
         logging.warning("Constant saliency map; SRC unavailable: %s / %s", clean_path, attack_path)
         return None
-    return float(spearmanr(maps[0].ravel(), maps[1].ravel()).statistic)
+    return float(spearmanr(maps[0].ravel(), maps[1].ravel())[0])
 
 
 def collect_metrics(root, epsilon, clean_root=None):
