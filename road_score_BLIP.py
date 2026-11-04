@@ -102,7 +102,7 @@ def main():
         if config.get("model") != "BLIP_ITC":
             raise ValueError(f"Not a BLIP attack configuration: {config_path}")
         mode = config["mode"]
-        if mode not in ("ins", "del", "del+ins"):
+        if mode not in ("ins", "del", "del+ins", "xshift"):
             raise ValueError(f"Unsupported attack mode {mode}: {config_path}")
         config["checkpoint"] = args.checkpoint or Path(config["checkpoint"])
         config["blip_root"] = args.blip_root.resolve()
@@ -136,7 +136,12 @@ def main():
             prefix = "joint" if mode == "del+ins" else mode
             image_suffix = "del_ins" if mode == "del+ins" else mode
             image_path = info_path.parent / f"adversarial_image_{image_suffix}.png"
-            saliency_path = info_path.parent / f"{prefix}_del_adv_{config['hm_type']}_saliency.npy"
+            saliency_name = (
+                f"del_xshift_{config['hm_type']}_saliency.npy"
+                if mode == "xshift"
+                else f"{prefix}_del_adv_{config['hm_type']}_saliency.npy"
+            )
+            saliency_path = info_path.parent / saliency_name
             with Image.open(image_path) as source:
                 image = to_tensor(source.convert("RGB"))
             saliency = np.load(saliency_path, allow_pickle=False).squeeze()

@@ -52,6 +52,11 @@ class BLIPAttackAdapter(nn.Module):
         features, _, _ = encode_image(self.model, images, self.options.last_heads)
         return features
 
+    def encode_tokens(self, images):
+        features, captured, _ = encode_image(self.model, images, self.options.last_heads)
+        patches = self.model.vision_proj(captured["normalized_tokens"][:, 1:])
+        return features, patches
+
     def encode_text(self, texts):
         tokens = self.model.tokenizer(
             texts, padding="max_length", truncation=True, max_length=35,

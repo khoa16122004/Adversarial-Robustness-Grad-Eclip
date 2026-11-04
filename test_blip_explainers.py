@@ -141,7 +141,8 @@ def encode_image(model, image, last_heads, game_start=None):
                 "input": residual, "attended": attended,
                 "q": q, "k": k, "v": v,
             }
-    features = model.vision_proj(vit.norm(x)[:, 0])
+    captured["normalized_tokens"] = vit.norm(x)
+    features = model.vision_proj(captured["normalized_tokens"][:, 0])
     return features, captured, game_attentions
 
 

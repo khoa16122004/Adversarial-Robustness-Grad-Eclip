@@ -4,11 +4,6 @@ import os
 
 from tqdm import tqdm
 
-try:
-    from CLIP import clip
-except ImportError:
-    import clip
-
 import torch
 import torch.nn.functional as F
 from PIL import Image
@@ -214,6 +209,7 @@ def run_xshift_attack(
     lambda_patch,
     lambda_ent,
     margin,
+    token_encoder=encode_vit_tokens,
 ):
     device = image_raw.device
     delta = torch.zeros_like(image_raw, requires_grad=True)
@@ -223,7 +219,7 @@ def run_xshift_attack(
     trace = []
     with torch.no_grad():
         clean_norm = normalize_ImageNet1k(image_raw)
-        _, clean_patches = encode_vit_tokens(clip_model, clean_norm)
+        _, clean_patches = token_encoder(clip_model, clean_norm)
         clean_patches = F.normalize(clean_patches.float(), dim=-1)
         clean_similarity_map = torch.einsum("bpd,d->bp", clean_patches, target_text_feature.float())
         clean_similarity = clean_similarity_map.mean().item()
@@ -242,7 +238,7 @@ def run_xshift_attack(
         x_adv_raw = torch.clamp(image_raw + delta, 0.0, 1.0)
         x_adv_norm = normalize_ImageNet1k(x_adv_raw)
 
-        cls_feature, patch_features = encode_vit_tokens(clip_model, x_adv_norm)
+        cls_feature, patch_features = token_encoder(clip_model, x_adv_norm)
         cls_feature = F.normalize(cls_feature.float(), dim=-1)
         patch_features = F.normalize(patch_features.float(), dim=-1)
 
@@ -296,7 +292,7 @@ def run_xshift_attack(
             pred_label_eval = int(torch.argmax(probs_eval, dim=-1).item())
             class_preserved = pred_label_eval == int(original_label)
 
-            _, patch_eval = encode_vit_tokens(clip_model, x_adv_norm_eval)
+            _, patch_eval = token_encoder(clip_model, x_adv_norm_eval)
             patch_eval = F.normalize(patch_eval.float(), dim=-1)
             sim_eval = torch.einsum("bpd,d->bp", patch_eval, target_text_feature.float())
             map_change = float((sim_eval - clean_similarity_map).abs().mean().item())
@@ -330,7 +326,7 @@ def run_xshift_attack(
         # Return the best class-preserving candidate (clean step is always a fallback candidate).
         x_adv_raw = selected_x_raw
         x_adv_norm = normalize_ImageNet1k(x_adv_raw)
-        _, adv_patches = encode_vit_tokens(clip_model, x_adv_norm)
+        _, adv_patches = token_encoder(clip_model, x_adv_norm)
         adv_patches = F.normalize(adv_patches.float(), dim=-1)
         adv_similarity = torch.einsum("bpd,d->bp", adv_patches, target_text_feature.float()).mean().item()
         adv_logits = classifier(x_adv_norm)
@@ -350,6 +346,11 @@ def run_xshift_attack(
 
 
 def main():
+    try:
+        from CLIP import clip
+    except ImportError:
+        import clip
+
     args = parse_args()
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     classnames = load_classnames(args.classnames_path)
