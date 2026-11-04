@@ -14,6 +14,12 @@ DISPLAY_NAMES = {
     "rise": "RISE",
 }
 
+DATASETS = (
+    ("ImageNet", {"imagenet"}),
+    ("StanfordPets", {"stanfordpet", "stanfordpets", "standfordpet", "standfordpets"}),
+    ("CUB", {"cub"}),
+)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -22,8 +28,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--input-root",
         type=Path,
-        default=Path("BLIP_result/ImageNet"),
-        help="Directory containing eps_* result folders.",
+        default=Path("BLIP_result"),
+        help="BLIP result root containing one directory per dataset.",
     )
     parser.add_argument(
         "--epsilon",
@@ -63,74 +69,128 @@ def _format_metric(value: Optional[Tuple[float, float]]) -> str:
     return f"{value[0]:.4f} $\\pm$ {value[1]:.4f}"
 
 
+def _find_dataset_dir(input_root: Path, aliases: set[str]) -> Optional[Path]:
+    for path in input_root.iterdir():
+        if path.is_dir() and "".join(c for c in path.name.lower() if c.isalnum()) in aliases:
+            return path
+    return None
+
+
 def collect_rows(
     input_root: Path, selected_epsilon: Optional[str] = None
-) -> List[Tuple[str, str, str, str]]:
-    rows = []
+) -> Tuple[
+    List[str],
+    List[str],
+    Dict[Tuple[str, str, str], Dict[str, Optional[Tuple[float, float]]]],
+]:
+    dataset_dirs = []
+    for display_name, aliases in DATASETS:
+        dataset_dir = _find_dataset_dir(input_root, aliases)
+        if dataset_dir is None:
+            raise FileNotFoundError(
+                f"Missing {display_name} result directory under: {input_root}"
+            )
+        dataset_dirs.append((display_name, dataset_dir))
+
     if selected_epsilon is not None:
         epsilon_name = selected_epsilon.removeprefix("eps_")
-        epsilon_dirs = [input_root / f"eps_{epsilon_name}"]
-        if not epsilon_dirs[0].is_dir():
-            raise FileNotFoundError(f"Epsilon result directory not found: {epsilon_dirs[0]}")
+        epsilon_names = [epsilon_name]
     else:
-        epsilon_dirs = sorted(
-            (path for path in input_root.glob("eps_*") if path.is_dir()),
-            key=lambda path: (
-                int(path.name.removeprefix("eps_"))
-                if path.name.removeprefix("eps_").isdigit()
-                else math.inf,
-                path.name,
-            ),
+        epsilon_names = sorted(
+            {
+                path.name.removeprefix("eps_")
+                for _, dataset_dir in dataset_dirs
+                for path in dataset_dir.glob("eps_*")
+                if path.is_dir()
+            },
+            key=lambda value: (int(value) if value.isdigit() else math.inf, value),
         )
+    if not epsilon_names:
+        raise FileNotFoundError(f"No eps_* result folders found under: {input_root}")
 
-    for epsilon_dir in epsilon_dirs:
-        epsilon = epsilon_dir.name.removeprefix("eps_")
-        for explainer_dir in sorted(path for path in epsilon_dir.iterdir() if path.is_dir()):
-            summary_path = (
-                explainer_dir / "eval_curve_summary_fair_auc" / "summary_fair_auc.json"
-            )
-            if not summary_path.is_file():
+    explainers = set()
+    metrics: Dict[Tuple[str, str, str], Optional[Tuple[float, float]]] = {}
+    found_summary = False
+
+    for epsilon in epsilon_names:
+        for dataset_name, dataset_dir in dataset_dirs:
+            epsilon_dir = dataset_dir / f"eps_{epsilon}"
+            if not epsilon_dir.is_dir():
                 continue
-
-            deletion = _read_metric(summary_path, "del")
-            insertion = _read_metric(summary_path, "ins")
-            display_name = DISPLAY_NAMES.get(
-                explainer_dir.name.lower(), explainer_dir.name.replace("_", r"\_")
-            )
-            rows.append(
-                (
-                    epsilon,
-                    display_name,
-                    _format_metric(deletion),
-                    _format_metric(insertion),
+            for explainer_dir in sorted(path for path in epsilon_dir.iterdir() if path.is_dir()):
+                summary_path = (
+                    explainer_dir / "eval_curve_summary_fair_auc" / "summary_fair_auc.json"
                 )
-            )
+                if not summary_path.is_file():
+                    continue
+                found_summary = True
+                explainer = DISPLAY_NAMES.get(
+                    explainer_dir.name.lower(), explainer_dir.name.replace("_", r"\_")
+                )
+                explainers.add(explainer)
+                metrics[(epsilon, explainer, dataset_name)] = {
+                    "del": _read_metric(summary_path, "del"),
+                    "ins": _read_metric(summary_path, "ins"),
+                }
 
-    if not rows:
+    if not found_summary:
+        epsilon_text = f" for eps_{epsilon_names[0]}" if selected_epsilon is not None else ""
         raise FileNotFoundError(
-            "No BLIP fair-AUC summaries found. Expected "
-            "<input-root>/eps_*/<explainer>/eval_curve_summary_fair_auc/"
-            "summary_fair_auc.json. Run script_eval/run_eval.py for each eps_* folder first."
+            f"No BLIP fair-AUC summaries found{epsilon_text}. Expected "
+            "<input-root>/<dataset>/eps_*/<explainer>/"
+            "eval_curve_summary_fair_auc/summary_fair_auc.json. "
+            "Run script_eval/run_eval.py for each dataset and epsilon first."
         )
-    return rows
+    return epsilon_names, sorted(explainers), metrics
 
 
-def build_table(rows: List[Tuple[str, str, str, str]]) -> str:
+def build_table(
+    epsilon_names: List[str],
+    explainers: List[str],
+    metrics: Dict[Tuple[str, str, str], Dict[str, Optional[Tuple[float, float]]]],
+) -> str:
+    column_spec = "ll" + "cc" * len(DATASETS)
+    header = " & ".join(
+        [r"$\epsilon$", r"\textbf{Explainer}"]
+        + [rf"\multicolumn{{2}}{{c}}{{{dataset}}}" for dataset, _ in DATASETS]
+    )
+    subheader = " & ".join(
+        ["", ""]
+        + [
+            r"Del. fair-AUC $\downarrow$ & Ins. fair-AUC $\uparrow$"
+            for _ in DATASETS
+        ]
+    )
     lines = [
         r"\begin{table*}[t]",
         r"\centering",
         r"\small",
-        r"\caption{BLIP fair-AUC results by attack budget and explainer.}",
+        r"\caption{BLIP fair-AUC results by attack budget, explainer, and dataset.}",
         r"\label{tab:blip-fair-auc}",
-        r"\begin{tabular}{llcc}",
+        rf"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
-        r"$\epsilon$ & Explainer & Deletion fair-AUC $\downarrow$ & Insertion fair-AUC $\uparrow$ \\",
-        r"\midrule",
+        header + r" \\",
     ]
-    for epsilon, explainer, deletion, insertion in rows:
-        lines.append(
-            f"{epsilon} & {explainer} & {deletion} & {insertion} " + r"\\"
-        )
+    start_col = 3
+    for _ in DATASETS:
+        lines.append(rf"\cmidrule(lr){{{start_col}-{start_col + 1}}}")
+        start_col += 2
+    lines.extend([subheader + r" \\", r"\midrule"])
+
+    for epsilon in epsilon_names:
+        for explainer in explainers:
+            cells = [epsilon, explainer]
+            for dataset_name, _ in DATASETS:
+                values = metrics.get((epsilon, explainer, dataset_name))
+                if values is None:
+                    cells.extend(["--", "--"])
+                else:
+                    cells.extend(
+                        [_format_metric(values["del"]), _format_metric(values["ins"])]
+                    )
+            lines.append(" & ".join(cells) + r" \\")
+        if epsilon != epsilon_names[-1]:
+            lines.append(r"\midrule")
     lines.extend([r"\bottomrule", r"\end{tabular}", r"\end{table*}"])
     return "\n".join(lines) + "\n"
 
@@ -144,15 +204,15 @@ def main() -> None:
     output_path = (
         args.output_tex.expanduser().resolve()
         if args.output_tex
-        else input_root / "blip_fair_auc.tex"
+        else input_root / (
+            f"blip_fair_auc_eps_{args.epsilon.removeprefix('eps_')}.tex"
+            if args.epsilon
+            else "blip_fair_auc.tex"
+        )
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    if args.output_tex is None and args.epsilon is not None:
-        output_path = input_root / f"blip_fair_auc_eps_{args.epsilon.removeprefix('eps_')}.tex"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        build_table(collect_rows(input_root, args.epsilon)), encoding="utf-8"
-    )
+    epsilon_names, explainers, metrics = collect_rows(input_root, args.epsilon)
+    output_path.write_text(build_table(epsilon_names, explainers, metrics), encoding="utf-8")
     print(f"Saved LaTeX table: {output_path}")
 
 
