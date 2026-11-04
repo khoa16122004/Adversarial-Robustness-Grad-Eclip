@@ -26,6 +26,12 @@ def parse_args() -> argparse.Namespace:
         help="Directory containing eps_* result folders.",
     )
     parser.add_argument(
+        "--epsilon",
+        type=str,
+        default=None,
+        help="Optional single epsilon to export (for example: 2 or 16).",
+    )
+    parser.add_argument(
         "--output-tex",
         type=Path,
         default=None,
@@ -57,17 +63,25 @@ def _format_metric(value: Optional[Tuple[float, float]]) -> str:
     return f"{value[0]:.4f} $\\pm$ {value[1]:.4f}"
 
 
-def collect_rows(input_root: Path) -> List[Tuple[str, str, str, str]]:
+def collect_rows(
+    input_root: Path, selected_epsilon: Optional[str] = None
+) -> List[Tuple[str, str, str, str]]:
     rows = []
-    epsilon_dirs = sorted(
-        (path for path in input_root.glob("eps_*") if path.is_dir()),
-        key=lambda path: (
-            int(path.name.removeprefix("eps_"))
-            if path.name.removeprefix("eps_").isdigit()
-            else math.inf,
-            path.name,
-        ),
-    )
+    if selected_epsilon is not None:
+        epsilon_name = selected_epsilon.removeprefix("eps_")
+        epsilon_dirs = [input_root / f"eps_{epsilon_name}"]
+        if not epsilon_dirs[0].is_dir():
+            raise FileNotFoundError(f"Epsilon result directory not found: {epsilon_dirs[0]}")
+    else:
+        epsilon_dirs = sorted(
+            (path for path in input_root.glob("eps_*") if path.is_dir()),
+            key=lambda path: (
+                int(path.name.removeprefix("eps_"))
+                if path.name.removeprefix("eps_").isdigit()
+                else math.inf,
+                path.name,
+            ),
+        )
 
     for epsilon_dir in epsilon_dirs:
         epsilon = epsilon_dir.name.removeprefix("eps_")
@@ -133,7 +147,12 @@ def main() -> None:
         else input_root / "blip_fair_auc.tex"
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(build_table(collect_rows(input_root)), encoding="utf-8")
+    if args.output_tex is None and args.epsilon is not None:
+        output_path = input_root / f"blip_fair_auc_eps_{args.epsilon.removeprefix('eps_')}.tex"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        build_table(collect_rows(input_root, args.epsilon)), encoding="utf-8"
+    )
     print(f"Saved LaTeX table: {output_path}")
 
 
