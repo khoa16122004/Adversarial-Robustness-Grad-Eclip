@@ -1,219 +1,239 @@
+"""Export BLIP faithfulness results without model inference or GPU dependencies."""
+
 import argparse
 import json
+import logging
 import math
+import statistics
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
-
-DISPLAY_NAMES = {
-    "eclip": "GradECLIP",
-    "gradeclip": "GradECLIP",
-    "game": "GAME",
-    "gradcam": "GradCAM",
-    "maskclip": "MaskCLIP",
-    "rise": "RISE",
-}
 
 DATASETS = (
     ("ImageNet", {"imagenet"}),
     ("StanfordPets", {"stanfordpet", "stanfordpets", "standfordpet", "standfordpets"}),
     ("CUB", {"cub"}),
 )
+EXPLAINERS = (
+    ("GradECLIP", {"eclip", "gradeclip"}),
+    ("GAME", {"game"}),
+    ("GradCAM", {"gradcam"}),
+    ("MaskCLIP", {"maskclip"}),
+    ("RISE", {"rise"}),
+)
+ATTACKS = ("Without Attack", "X-Shift", "IOA", "DOA", "IOA+DOA")
+ATTACK_ALIASES = {
+    "clean": "Without Attack",
+    "clean_score": "Without Attack",
+    "clean_causual_score": "Without Attack",
+    "xshift": "X-Shift",
+    "x-shift": "X-Shift",
+    "xshift_score": "X-Shift",
+    "ins": "IOA",
+    "ioa": "IOA",
+    "ins_optimize_output": "IOA",
+    "del": "DOA",
+    "doa": "DOA",
+    "del_optimize_output": "DOA",
+    "del+ins": "IOA+DOA",
+    "ioa+doa": "IOA+DOA",
+    "doa+ioa": "IOA+DOA",
+    "joint": "IOA+DOA",
+}
+METRICS = ("IMD", "SRC", "ROAD")
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Export BLIP fair-AUC summaries to a LaTeX table."
-    )
-    parser.add_argument(
-        "--input-root",
-        type=Path,
-        default=Path("BLIP_result"),
-        help="BLIP result root containing one directory per dataset.",
-    )
-    parser.add_argument(
-        "--epsilon",
-        type=str,
-        default=None,
-        help="Optional single epsilon to export (for example: 2 or 16).",
-    )
-    parser.add_argument(
-        "--output-tex",
-        type=Path,
-        default=None,
-        help="Output .tex file. Default: <input-root>/blip_fair_auc.tex",
-    )
-    return parser.parse_args()
-
-
-def _read_metric(summary_path: Path, metric: str) -> Optional[Tuple[float, float]]:
-    with summary_path.open("r", encoding="utf-8") as stream:
-        summary = json.load(stream)
-
-    metric_data = summary.get("metrics", {}).get(metric)
-    if not isinstance(metric_data, dict):
-        return None
-
-    mean = metric_data.get("mean_fair_auc")
-    std = metric_data.get("std_fair_auc")
-    if not isinstance(mean, (int, float)) or not math.isfinite(mean):
-        return None
-    if not isinstance(std, (int, float)) or not math.isfinite(std):
-        return None
-    return float(mean), float(std)
-
-
-def _format_metric(value: Optional[Tuple[float, float]]) -> str:
-    if value is None:
-        return "--"
-    return f"{value[0]:.4f} $\\pm$ {value[1]:.4f}"
-
-
-def _find_dataset_dir(input_root: Path, aliases: set[str]) -> Optional[Path]:
-    for path in input_root.iterdir():
-        if path.is_dir() and "".join(c for c in path.name.lower() if c.isalnum()) in aliases:
-            return path
+def finite_number(value):
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if math.isfinite(value):
+            return float(value)
     return None
 
 
-def collect_rows(
-    input_root: Path, selected_epsilon: Optional[str] = None
-) -> Tuple[
-    List[str],
-    List[str],
-    Dict[Tuple[str, str, str], Dict[str, Optional[Tuple[float, float]]]],
-]:
-    dataset_dirs = []
-    for display_name, aliases in DATASETS:
-        dataset_dir = _find_dataset_dir(input_root, aliases)
-        if dataset_dir is None:
-            raise FileNotFoundError(
-                f"Missing {display_name} result directory under: {input_root}"
-            )
-        dataset_dirs.append((display_name, dataset_dir))
+def fair_auc(curve):
+    if not isinstance(curve, list) or len(curve) < 2:
+        raise ValueError("A curve must contain at least two finite numbers")
+    values = [finite_number(value) for value in curve]
+    if any(value is None for value in values):
+        raise ValueError("Nonfinite or nonnumeric curve value")
+    maximum = max(values)
+    if maximum <= 0:
+        raise ValueError("Cannot normalize a curve whose maximum is nonpositive")
+    return sum(
+        (left + right) / 2 for left, right in zip(values, values[1:])
+    ) / ((len(values) - 1) * maximum)
 
-    if selected_epsilon is not None:
-        epsilon_name = selected_epsilon.removeprefix("eps_")
-        epsilon_names = [epsilon_name]
-    else:
-        epsilon_names = sorted(
-            {
-                path.name.removeprefix("eps_")
-                for _, dataset_dir in dataset_dirs
-                for path in dataset_dir.glob("eps_*")
-                if path.is_dir()
-            },
-            key=lambda value: (int(value) if value.isdigit() else math.inf, value),
-        )
-    if not epsilon_names:
-        raise FileNotFoundError(f"No eps_* result folders found under: {input_root}")
 
-    explainers = set()
-    metrics: Dict[Tuple[str, str, str], Dict[str, Optional[Tuple[float, float]]]] = {}
-    found_summary = False
+def identify(path, root, data):
+    parts = [part.lower() for part in path.relative_to(root).parts[:-1]]
+    dataset = next(
+        (name for name, aliases in DATASETS if any(p in aliases for p in parts)), None
+    )
+    explainer = next(
+        (name for name, aliases in EXPLAINERS if any(p in aliases for p in parts)), None
+    )
+    attacks = {ATTACK_ALIASES[p] for p in parts if p in ATTACK_ALIASES}
+    if not attacks:
+        mode = data.get("attack_mode")
+        if isinstance(mode, str) and mode.lower() in ATTACK_ALIASES:
+            attacks.add(ATTACK_ALIASES[mode.lower()])
+    if len(attacks) > 1:
+        raise ValueError(f"Ambiguous attack directories: {path}")
+    epsilon = next((p[4:] for p in parts if p.startswith("eps_")), None)
+    return dataset, explainer, next(iter(attacks), None), epsilon
 
-    for epsilon in epsilon_names:
-        for dataset_name, dataset_dir in dataset_dirs:
-            epsilon_dir = dataset_dir / f"eps_{epsilon}"
-            if not epsilon_dir.is_dir():
+
+def collect_metrics(root, epsilon):
+    # Keep sample-level pairs: never subtract means over unmatched sample sets.
+    samples = {}
+    scanned = 0
+    filenames = {
+        "curve_information.json", "insertion_information.json",
+        "deletion_information.json", "road_deletion_information.json",
+    }
+    for path in sorted(root.rglob("*.json")):
+        if path.name not in filenames:
+            continue
+        with path.open(encoding="utf-8") as stream:
+            data = json.load(stream)
+        if not isinstance(data, dict):
+            raise ValueError(f"Expected a JSON object: {path}")
+        dataset, explainer, attack, file_epsilon = identify(path, root, data)
+        if not all((dataset, explainer, attack)):
+            logging.warning("Unrecognized dataset/explainer/attack; skipping %s", path)
+            continue
+        if file_epsilon != epsilon and not (
+            file_epsilon is None and attack == "Without Attack"
+        ):
+            continue
+        scanned += 1
+        key = (dataset, explainer, attack, path.parent)
+        record = samples.setdefault(key, {})
+        try:
+            if path.name == "road_deletion_information.json":
+                value = finite_number(data.get("deletion_fair_auc"))
+                if value is not None:
+                    record["ROAD"] = value
                 continue
-            for explainer_dir in sorted(path for path in epsilon_dir.iterdir() if path.is_dir()):
-                summary_path = (
-                    explainer_dir / "eval_curve_summary_fair_auc" / "summary_fair_auc.json"
-                )
-                if not summary_path.is_file():
-                    continue
-                found_summary = True
-                explainer = DISPLAY_NAMES.get(
-                    explainer_dir.name.lower(), explainer_dir.name.replace("_", r"\_")
-                )
-                explainers.add(explainer)
-                metrics[(epsilon, explainer, dataset_name)] = {
-                    "del": _read_metric(summary_path, "del"),
-                    "ins": _read_metric(summary_path, "ins"),
-                }
+            rerun = data.get("rerun", {})
+            for mode, prefix in (("ins", "insertion"), ("del", "deletion")):
+                block = rerun.get(mode, {}) if isinstance(rerun, dict) else {}
+                curve = block.get("curve") if isinstance(block, dict) else None
+                if curve is None:
+                    curve = data.get(f"{prefix}_curve")
+                if curve is not None:
+                    record[mode] = fair_auc(curve)
+            for metric, field in (("SRC", "spearman"), ("ROAD", "road_fair_auc")):
+                value = finite_number(data.get(field))
+                if value is not None:
+                    record[metric] = value
+        except ValueError as exc:
+            raise ValueError(f"{path}: {exc}") from exc
 
-    if not found_summary:
-        epsilon_text = f" for eps_{epsilon_names[0]}" if selected_epsilon is not None else ""
+    if not scanned:
         raise FileNotFoundError(
-            f"No BLIP fair-AUC summaries found{epsilon_text}. Expected "
-            "<input-root>/<dataset>/eps_*/<explainer>/"
-            "eval_curve_summary_fair_auc/summary_fair_auc.json. "
-            "Run script_eval/run_eval.py for each dataset and epsilon first."
+            f"No recognized per-sample results for eps_{epsilon} under {root}. "
+            "Expected <dataset>/eps_<n>/<explainer>/<ins|del|del+ins>/<sample>/"
+            "curve_information.json (or named attack folders)."
         )
-    return epsilon_names, sorted(explainers), metrics
+    values = {}
+    for (dataset, explainer, attack, _), record in samples.items():
+        if "ins" in record and "del" in record:
+            record["IMD"] = record["ins"] - record["del"]
+        for metric in METRICS:
+            if metric in record:
+                values.setdefault((dataset, explainer, attack, metric), []).append(record[metric])
+    means = {key: statistics.mean(items) for key, items in values.items()}
+    for dataset, _ in DATASETS:
+        for attack in ATTACKS:
+            count = sum(
+                1 for key in means if key[0] == dataset and key[2] == attack
+            )
+            if not count:
+                logging.warning("No metrics for %s / %s; cells left blank", dataset, attack)
+    return means
 
 
-def build_table(
-    epsilon_names: List[str],
-    explainers: List[str],
-    metrics: Dict[Tuple[str, str, str], Dict[str, Optional[Tuple[float, float]]]],
-) -> str:
-    column_spec = "ll" + "cc" * len(DATASETS)
-    header = " & ".join(
-        [r"$\epsilon$", r"\textbf{Explainer}"]
-        + [rf"\multicolumn{{2}}{{c}}{{{dataset}}}" for dataset, _ in DATASETS]
-    )
-    subheader = " & ".join(
-        ["", ""]
-        + [
-            r"Del. fair-AUC $\downarrow$ & Ins. fair-AUC $\uparrow$"
-            for _ in DATASETS
-        ]
-    )
-    lines = [
-        r"\begin{table*}[t]",
-        r"\centering",
-        r"\small",
-        r"\caption{BLIP fair-AUC results by attack budget, explainer, and dataset.}",
-        r"\label{tab:blip-fair-auc}",
-        rf"\begin{{tabular}}{{{column_spec}}}",
-        r"\toprule",
-        header + r" \\",
+def render_cell(means, dataset, explainer, attack, metric):
+    value = means.get((dataset, explainer, attack, metric))
+    if value is None or (attack == "Without Attack" and metric == "SRC"):
+        return ""
+    available = [
+        means[(dataset, explainer, candidate, metric)]
+        for candidate in ATTACKS
+        if (dataset, explainer, candidate, metric) in means
+        and not (candidate == "Without Attack" and metric == "SRC")
     ]
-    start_col = 3
-    for _ in DATASETS:
-        lines.append(rf"\cmidrule(lr){{{start_col}-{start_col + 1}}}")
-        start_col += 2
-    lines.extend([subheader + r" \\", r"\midrule"])
+    best = max(available) if metric == "ROAD" else min(available)
+    text = f"{value:.4f}"
+    if value == best:
+        text = rf"\textbf{{\textcolor{{blue!60}}{{{text}}}}}"
+    text = rf"{{\scriptsize {text}}}"
+    baseline = "X-Shift" if metric == "SRC" else "Without Attack"
+    base_value = means.get((dataset, explainer, baseline, metric))
+    if attack not in ("Without Attack", baseline) and base_value is not None:
+        delta = value - base_value
+        delta_text = f"{delta:+.3f}".replace("+0.", "+.").replace("-0.", "-.")
+        if (delta > 0 if metric == "ROAD" else delta < 0):
+            delta_text = rf"\textcolor{{red}}{{{delta_text}}}"
+        text += rf"{{\raisebox{{-0.65ex}}{{\hspace{{0.12em}}\tiny {delta_text}}}}}"
+    return text
 
-    for epsilon in epsilon_names:
-        for explainer in explainers:
-            cells = [epsilon, explainer]
-            for dataset_name, _ in DATASETS:
-                values = metrics.get((epsilon, explainer, dataset_name))
-                if values is None:
-                    cells.extend(["--", "--"])
-                else:
-                    cells.extend(
-                        [_format_metric(values["del"]), _format_metric(values["ins"])]
-                    )
-            lines.append(" & ".join(cells) + r" \\")
-        if epsilon != epsilon_names[-1]:
+
+def build_table(means, epsilon):
+    lines = [
+        r"\begin{table*}[t]", r"\centering", r"\footnotesize",
+        r"\renewcommand{\arraystretch}{1}", r"\setlength{\tabcolsep}{4pt}",
+        r"\caption{Comparison of adversarial attacks on BLIP across datasets "
+        + rf"($\epsilon={epsilon}/255$). "
+        + r"IMD is insertion fair-AUC minus deletion fair-AUC, each curve normalized "
+        r"by its own maximum. Lower IMD and SRC, and higher ROAD indicate more "
+        r"effective attacks. Blue indicates best available scores; red deltas "
+        r"indicate improvements over Without Attack (IMD/ROAD) or X-Shift (SRC). "
+        r"Missing measurements are blank.}",
+        r"\label{tab:blip-faithfulness}",
+        r"\resizebox{\textwidth}{!}{%",
+        r"\begin{tabular}{llrrrrrrrrr}", r"\toprule",
+        r"& & \multicolumn{3}{c}{ImageNet} & \multicolumn{3}{c}{StanfordPets} "
+        r"& \multicolumn{3}{c}{CUB} \\",
+        r"\cmidrule(lr){3-5}\cmidrule(lr){6-8}\cmidrule(lr){9-11}",
+        r"\textbf{Explainer} & \textbf{Attack} & "
+        + " & ".join(
+            [r"IMD $\downarrow$", r"SRC $\downarrow$", r"ROAD $\uparrow$"] * 3
+        ) + r" \\", r"\midrule",
+    ]
+    for index, (explainer, _) in enumerate(EXPLAINERS):
+        if index:
             lines.append(r"\midrule")
-    lines.extend([r"\bottomrule", r"\end{tabular}", r"\end{table*}"])
+        for attack_index, attack in enumerate(ATTACKS):
+            first = rf"\multirow[c]{{5}}{{*}}{{{explainer}}}" if attack_index == 0 else ""
+            label = rf"\textbf{{{attack}}}" if attack_index >= 2 else attack
+            cells = [
+                render_cell(means, dataset, explainer, attack, metric)
+                for dataset, _ in DATASETS for metric in METRICS
+            ]
+            lines.append(" & ".join([first, label] + cells) + r" \\")
+    lines.extend([r"\bottomrule", r"\end{tabular}%", "}", r"\end{table*}"])
     return "\n".join(lines) + "\n"
 
 
-def main() -> None:
-    args = parse_args()
-    input_root = args.input_root.expanduser().resolve()
-    if not input_root.is_dir():
-        raise FileNotFoundError(f"Input root is not a directory: {input_root}")
-
-    output_path = (
-        args.output_tex.expanduser().resolve()
-        if args.output_tex
-        else input_root / (
-            f"blip_fair_auc_eps_{args.epsilon.removeprefix('eps_')}.tex"
-            if args.epsilon
-            else "blip_fair_auc.tex"
-        )
-    )
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    epsilon_names, explainers, metrics = collect_rows(input_root, args.epsilon)
-    output_path.write_text(build_table(epsilon_names, explainers, metrics), encoding="utf-8")
-    print(f"Saved LaTeX table: {output_path}")
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input-root", type=Path, default=Path("BLIP_result"))
+    parser.add_argument("--epsilon", required=True, help="Single pixel budget, e.g. 2 or eps_2")
+    parser.add_argument("--output-tex", type=Path)
+    args = parser.parse_args()
+    epsilon = args.epsilon.removeprefix("eps_")
+    if not epsilon.isdigit():
+        parser.error("--epsilon must be a nonnegative integer (optionally prefixed eps_)")
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    root = args.input_root.expanduser().resolve()
+    if not root.is_dir():
+        raise FileNotFoundError(f"Input root is not a directory: {root}")
+    means = collect_metrics(root, epsilon)
+    output = args.output_tex or root / f"blip_faithfulness_eps_{epsilon}.tex"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(build_table(means, epsilon), encoding="utf-8")
+    logging.info("Saved %s (%d populated metric cells)", output, len(means))
 
 
 if __name__ == "__main__":

@@ -158,6 +158,36 @@ the user will run them in their BLIP environment. In particular, the local
 checkpoint architecture and the proposed dependency combination still need
 runtime verification.
 
+## Export a BLIP faithfulness LaTeX table (CPU only)
+
+From the repository root, after copying results into `BLIP_result`:
+
+```bash
+python script_eval/export_blip_latex.py --input-root BLIP_result --epsilon 2 --output-tex blip_eps_2.tex
+```
+
+The table follows `latex_format.text`: five explainers, each with Without Attack,
+X-Shift, IOA, DOA, and IOA+DOA rows, and ImageNet/StanfordPets/CUB column groups.
+Requires LaTeX packages `booktabs`, `multirow`, `graphicx`, and `xcolor`.
+
+The exporter reads per-sample JSON directly, not the explainer-level fair-AUC
+summary, which may combine multiple attack modes. Supported layout:
+`BLIP_result/<dataset>/eps_<n>/<explainer>/<ins|del|del+ins>/<sample>/curve_information.json`.
+Dataset names are case-insensitive, including `StandfordPet`. Named attack folders
+`Xshift_score`, `ins_optimize_output`, `del_optimize_output`, `joint`, and
+`clean_causual_score` are also recognized. Clean results may omit `eps_<n>`.
+Attack modes map to IOA (`ins`), DOA (`del`), and IOA+DOA (`del+ins`).
+
+IMD is computed per sample as insertion fair-AUC minus deletion fair-AUC, then
+averaged. Each curve is normalized by its own positive maximum, matching
+`run_eval.py`. Separate clean insertion/deletion JSON files are paired by sample
+directory. SRC is read only from an explicit numeric `spearman` field; ROAD is
+read from an explicit `road_fair_auc` field or `deletion_fair_auc` in a sibling
+`road_deletion_information.json`. Deletion AUC is never substituted for ROAD.
+Missing measurements remain blank, with warnings for missing dataset/attack
+groups. Best available scores are blue, and improved deltas are red, using clean
+as the IMD/ROAD baseline and X-Shift as the SRC baseline. No model is loaded.
+
 ## Adversarial evaluation: `adv_score_BLIP.py`
 
 This is a separate BLIP entry point; `adv_score_CLIP.py` and
