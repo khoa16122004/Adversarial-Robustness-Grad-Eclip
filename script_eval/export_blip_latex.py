@@ -2,7 +2,7 @@ import argparse
 import json
 import math
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
 DISPLAY_NAMES = {
@@ -109,7 +109,7 @@ def collect_rows(
         raise FileNotFoundError(f"No eps_* result folders found under: {input_root}")
 
     explainers = set()
-    metrics: Dict[Tuple[str, str, str], Optional[Tuple[float, float]]] = {}
+    metrics: Dict[Tuple[str, str, str], Dict[str, Optional[Tuple[float, float]]]] = {}
     found_summary = False
 
     for epsilon in epsilon_names:
