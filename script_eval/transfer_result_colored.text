@@ -1,0 +1,138 @@
+\begin{table*}[t]
+\centering
+% \scriptsize
+% \renewcommand{\arraystretch}{0.92}
+\setlength{\tabcolsep}{3pt}
+
+\caption{
+Transfer Attack (Average across three datasets).
+IMD ($\downarrow$), Spearman ($\downarrow$), and ROAD ($\uparrow$).
+}
+\vspace{4pt}
+
+\label{tab:transfer_combined}
+
+\resizebox{\textwidth}{!}{
+\begin{tabular}{ll|ccccc|ccccc|ccccc}
+\toprule
+
+& &
+\multicolumn{5}{c|}{\textbf{IMD} $\downarrow$} &
+\multicolumn{5}{c|}{\textbf{SRC} $\downarrow$} &
+\multicolumn{5}{c}{\textbf{ROAD} $\uparrow$}
+\\
+
+\textbf{Attack}
+& \textbf{Source}
+& \multicolumn{5}{c|}{\textbf{Target Explainer}}
+& \multicolumn{5}{c|}{\textbf{Target Explainer}}
+& \multicolumn{5}{c}{\textbf{Target Explainer}}
+\\
+
+& 
+& GradECLIP & GAME & GradCAM & MaskCLIP & RISE
+& GradECLIP & GAME & GradCAM & MaskCLIP & RISE
+& GradECLIP & GAME & GradCAM & MaskCLIP & RISE
+\\
+
+\midrule
+
+X-Shift
+& --
+& 0.7502{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.7315{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.5208{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.6439{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.5201{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}}
+& 0.5891{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.4506{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.2850{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.4626{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.0492{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}}
+& 0.0989{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.1214{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.2104{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.1110{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.2435{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}}
+\\
+
+\midrule
+
+\multirow{5}{*}{IOA}
+& GradECLIP
+& \textbf{0.2575}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.3404{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.391}}} & 0.1179{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.403}}} & 0.3292{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.315}}} & 0.2307{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.289}}}
+& \textbf{0.6088}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.4249{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.026}}} & 0.3102{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.025}} & 0.4676{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.005}} & 0.0324{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.017}}}
+& \textbf{0.1263}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.1300{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.009}}} & 0.2008{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.010}} & 0.1195{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.008}}} & 0.1921{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.051}}
+\\
+& GAME
+& 0.3557{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.394}}} & \textbf{0.2607}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.1722{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.349}}} & 0.3226{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.321}}} & 0.2401{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.280}}}
+& 0.5824{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.007}}} & \textbf{0.4280}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.2913{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.006}} & 0.4605{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.002}}} & 0.0170{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.032}}}
+& 0.1140{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.015}}} & \textbf{0.1398}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.1787{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.032}} & 0.1185{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.007}}} & 0.1883{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.055}}
+\\
+& GradCAM
+& 0.3823{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.368}}} & 0.3994{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.332}}} & \textbf{-0.0132}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.3877{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.256}}} & 0.2675{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.253}}}
+& 0.5398{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.049}}} & 0.3954{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.055}}} & \textbf{0.3289}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.4468{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.016}}} & 0.0325{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.017}}}
+& 0.1189{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.020}}} & 0.1406{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.019}}} & \textbf{0.2481}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.1244{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.013}}} & 0.1812{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.062}}
+\\
+& MaskCLIP
+& 0.3540{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.396}}} & 0.3289{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.403}}} & 0.1564{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.364}}} & \textbf{0.2803}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.2347{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.285}}}
+& 0.5851{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.004}}} & 0.4376{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.013}}} & 0.3080{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.023}} & \textbf{0.4733}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.0269{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.022}}}
+& 0.1135{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.015}}} & 0.1243{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.003}}} & 0.1960{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.014}} & \textbf{0.1159}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.1795{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.064}}
+\\
+& RISE
+& 0.4325{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.318}}} & 0.4143{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.317}}} & 0.2047{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.316}}} & 0.3997{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.244}}} & \textbf{0.0776}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}}
+& 0.5694{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.020}}} & 0.4239{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.027}}} & 0.2812{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.004}}} & 0.4676{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.005}} & \textbf{0.0267}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}}
+& 0.1197{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.021}}} & 0.1304{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.009}}} & 0.1770{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.033}} & 0.1091{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.002}} & \textbf{0.2427}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}}
+\\
+
+\midrule
+
+\multirow{5}{*}{DOA}
+& GradECLIP
+& \textbf{0.2913}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.3877{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.344}}} & 0.1515{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.369}}} & 0.3581{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.286}}} & 0.2310{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.289}}}
+& \textbf{0.5508}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.3990{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.052}}} & 0.3827{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.098}} & 0.4620{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.001}}} & 0.0266{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.023}}}
+& \textbf{0.3324}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.3183{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.197}}} & 0.4167{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.206}}} & 0.2963{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.185}}} & 0.4114{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.168}}}
+\\
+& GAME
+& 0.4438{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.306}}} & \textbf{0.2845}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.2298{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.291}}} & 0.3995{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.244}}} & 0.2273{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.293}}}
+& 0.5946{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.006}} & \textbf{0.4172}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.3777{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.093}} & 0.4555{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.007}}} & 0.0239{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.025}}}
+& 0.2445{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.146}}} & \textbf{0.3662}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.3680{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.158}}} & 0.2737{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.163}}} & 0.4121{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.169}}}
+\\
+& GradCAM
+& 0.5688{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.181}}} & 0.5911{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.140}}} & \textbf{-0.0153}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.5579{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.086}}} & 0.3452{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.175}}}
+& 0.6445{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.055}} & 0.4478{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.003}}} & \textbf{0.4101}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.5097{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.047}} & 0.0245{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.025}}}
+& 0.1937{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.095}}} & 0.2035{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.082}}} & \textbf{0.5119}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.1971{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.086}}} & 0.3694{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.126}}}
+\\
+& MaskCLIP
+& 0.3959{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.354}}} & 0.3751{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.356}}} & 0.1919{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.329}}} & \textbf{0.2841}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.2355{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.285}}}
+& 0.5832{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.006}}} & 0.3990{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.052}}} & 0.3753{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.090}} & \textbf{0.4466}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.0297{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.019}}}
+& 0.2718{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.173}}} & 0.3179{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.197}}} & 0.3832{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.173}}} & \textbf{0.3287}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.4027{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.159}}}
+\\
+& RISE
+& 0.6028{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.147}}} & 0.5325{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.199}}} & 0.2795{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.241}}} & 0.5670{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.077}}} & \textbf{0.1909}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}}
+& 0.6588{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.070}} & 0.4844{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.034}} & 0.4340{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.149}} & 0.5402{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.078}} & \textbf{0.0136}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}}
+& 0.2057{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.107}}} & 0.2836{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.162}}} & 0.4206{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.210}}} & 0.2361{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.125}}} & \textbf{0.5401}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}}
+\\
+
+\midrule
+
+\multirow{5}{*}{IOA+DOA}
+& GradECLIP
+& \textbf{0.4360}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.4167{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.315}}} & 0.2321{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.289}}} & 0.3947{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.249}}} & 0.2770{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.243}}}
+& \textbf{0.8500}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.8066{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.356}} & 0.7931{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.508}} & 0.8234{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.361}} & 0.0302{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.019}}}
+& \textbf{0.1437}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.1767{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.055}}} & 0.2255{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.015}}} & 0.1530{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.042}}} & 0.2522{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.009}}}
+\\
+& GAME
+& 0.4194{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.331}}} & \textbf{0.3886}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.2398{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.281}}} & 0.3516{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.292}}} & 0.2738{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.246}}}
+& 0.8153{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.226}} & \textbf{0.7423}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.7421{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.457}} & 0.7797{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.317}} & 0.0138{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.035}}}
+& 0.1494{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.051}}} & \textbf{0.1769}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.2120{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.002}}} & 0.1528{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.042}}} & 0.2440{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.001}}}
+\\
+& GradCAM
+& 0.4928{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.257}}} & 0.4747{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.257}}} & \textbf{0.2500}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.4445{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.199}}} & 0.3271{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.193}}}
+& 0.7891{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.200}} & 0.7364{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.286}} & \textbf{0.6376}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.7473{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.285}} & 0.0405{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.009}}}
+& 0.1542{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.055}}} & 0.1925{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.071}}} & \textbf{0.1698}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.1611{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.050}}} & 0.2484{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.005}}}
+\\
+& MaskCLIP
+& 0.4580{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.292}}} & 0.4175{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.314}}} & 0.2600{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.261}}} & \textbf{0.3929}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.2796{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.240}}}
+& 0.8414{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.252}} & 0.7979{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.347}} & 0.7818{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.497}} & \textbf{0.8219}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.0393{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.010}}}
+& 0.1485{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.050}}} & 0.1740{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.053}}} & 0.2209{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.011}}} & \textbf{0.1557}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}} & 0.2514{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.008}}}
+\\
+& RISE
+& 0.4288{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.321}}} & 0.3930{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.339}}} & 0.2348{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.286}}} & 0.3658{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.278}}} & \textbf{0.2136}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}}
+& 0.7814{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.192}} & 0.7034{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.253}} & 0.6460{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.361}} & 0.7166{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.254}} & \textbf{0.0419}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}}
+& 0.1479{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.049}}} & 0.1861{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.065}}} & 0.2030{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.007}} & 0.1564{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.045}}} & \textbf{0.2362}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \phantom{+.000}}}
+\\
+
+\bottomrule
+\end{tabular}
+}
+
+\end{table*}

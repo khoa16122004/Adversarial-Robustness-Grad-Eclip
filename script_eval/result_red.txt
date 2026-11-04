@@ -1,0 +1,205 @@
+\begin{table*}[t]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1}
+\setlength{\tabcolsep}{4pt}
+\caption{
+Comparison of explanation faithfulness under different adversarial attacks on CLIP ViT-B/16.
+Lower IMD ($\downarrow$), lower Spearman correlation ($\downarrow$), and higher ROAD ($\uparrow$) indicate more effective attacks.
+}
+\vspace{4pt}
+\label{tab:faithfulness}
+
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lllllllllll}
+\toprule
+&
+&
+\multicolumn{3}{c}{ImageNet} &
+\multicolumn{3}{c}{StanfordPets} &
+\multicolumn{3}{c}{CUB} \\
+\cmidrule(lr){3-5}
+\cmidrule(lr){6-8}
+\cmidrule(lr){9-11}
+
+\textbf{Explainer} &
+\textbf{Attack} &
+\textbf{IMD $\downarrow$} &
+\textbf{Spear. $\downarrow$} &
+\textbf{ROAD $\uparrow$} &
+\textbf{IMD $\downarrow$} &
+\textbf{Spear. $\downarrow$} &
+\textbf{ROAD $\uparrow$} &
+\textbf{IMD $\downarrow$} &
+\textbf{Spear. $\downarrow$} &
+\textbf{ROAD $\uparrow$} \\
+
+\midrule
+
+\multirow[c]{5}{*}{GradECLIP}
+& Without Attack
+& {\scriptsize 0.6370} & -- & {\scriptsize 0.1466}
+& {\scriptsize 0.6103} & -- & {\scriptsize 0.1137}
+& {\scriptsize 0.5910} & -- & {\scriptsize 0.1578}
+\\
+
+& X-Shift
+& {\scriptsize 0.7085}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.072}} & 0.5688 & {\scriptsize 0.1178}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.029}}
+& {\scriptsize 0.7348}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.125}} & 0.6728 & {\scriptsize 0.0901}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.024}}
+& {\scriptsize 0.8074}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.216}} & 0.5257 & {\scriptsize 0.0889}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.069}}
+\\
+
+& \textbf{IOA}
+& {\scriptsize \textbf{\textcolor{blue!60}{0.0957}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.541}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.5235}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.045}}} & {\scriptsize 0.1493}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.003}}}
+& {\scriptsize \textbf{\textcolor{blue!60}{0.2014}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.409}}} & {\scriptsize 0.6841}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.011}} & {\scriptsize 0.1211}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.007}}}
+& {\scriptsize 0.4755}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.115}}} & {\scriptsize 0.6189}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.093}} & {\scriptsize 0.1085}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.049}}
+\\
+
+& \textbf{DOA}
+& {\scriptsize 0.2337}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.403}}} & {\scriptsize 0.5372}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.032}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.3688}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.222}}}
+& {\scriptsize 0.2549}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.355}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.6255}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.047}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.3163}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.203}}}
+& {\scriptsize \textbf{\textcolor{blue!60}{0.3854}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.206}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.4898}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.036}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.3120}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.154}}}
+\\
+
+& \textbf{IOA+DOA}
+& {\scriptsize 0.3283}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.309}}} & {\scriptsize 0.7662}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.197}} & {\scriptsize 0.1582}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.012}}}
+& {\scriptsize 0.5352}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.075}}} & {\scriptsize 0.9019}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.229}} & {\scriptsize 0.1548}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.041}}}
+& {\scriptsize 0.4447}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.146}}} & {\scriptsize 0.8818}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.356}} & {\scriptsize 0.1182}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.040}}
+\\
+
+\midrule
+
+\multirow[c]{5}{*}{GAME}
+& Without Attack
+& {\scriptsize 0.5816} & -- & {\scriptsize 0.1819}
+& {\scriptsize 0.5973} & -- & {\scriptsize 0.1478}
+& {\scriptsize 0.5388} & -- & {\scriptsize 0.1690}
+\\
+
+& X-Shift
+& {\scriptsize 0.6770}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.095}} & 0.4197 & {\scriptsize 0.1561}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.026}}
+& {\scriptsize 0.7316}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.134}} & 0.5351 & {\scriptsize 0.0983}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.049}}
+& {\scriptsize 0.7859}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.247}} & 0.3969 & {\scriptsize 0.1099}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.059}}
+\\
+
+& \textbf{IOA}
+& {\scriptsize \textbf{\textcolor{blue!60}{0.1115}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.470}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.3511}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.069}}} & {\scriptsize 0.1599}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.022}}
+& {\scriptsize \textbf{\textcolor{blue!60}{0.2077}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.390}}} & {\scriptsize 0.4933}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.042}}} & {\scriptsize 0.1339}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.014}}
+& {\scriptsize 0.4628}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.076}}} & {\scriptsize 0.4395}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.043}} & {\scriptsize 0.1255}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.044}}
+\\
+
+& \textbf{DOA}
+& {\scriptsize 0.2241}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.358}}} & {\scriptsize 0.3942}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.026}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.4022}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.220}}}
+& {\scriptsize 0.2633}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.334}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.4720}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.063}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.3384}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.191}}}
+& {\scriptsize \textbf{\textcolor{blue!60}{0.3662}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.173}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.3853}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.012}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.3580}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.189}}}
+\\
+
+& \textbf{IOA+DOA}
+& {\scriptsize 0.2588}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.323}}} & {\scriptsize 0.5972}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.177}} & {\scriptsize 0.2122}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.030}}}
+& {\scriptsize 0.4483}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.149}}} & {\scriptsize 0.8303}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.295}} & {\scriptsize 0.1671}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.019}}}
+& {\scriptsize 0.4222}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.117}}} & {\scriptsize 0.7993}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.402}} & {\scriptsize 0.1515}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.018}}
+\\
+
+
+\midrule
+
+\multirow[c]{5}{*}{GradCAM}
+& Without Attack
+& {\scriptsize 0.4608} & -- & {\scriptsize 0.2115}
+& {\scriptsize 0.4789} & -- & {\scriptsize 0.1441}
+& {\scriptsize 0.1475} & -- & {\scriptsize 0.3256}
+\\
+
+& X-Shift
+& {\scriptsize 0.5354}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.075}} & 0.3165 & {\scriptsize 0.2050}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.007}}
+& {\scriptsize 0.5896}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.111}} & \textbf{\textcolor{blue!60}{0.3954}} & {\scriptsize 0.1434}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.001}}
+& {\scriptsize 0.4375}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.290}} & \textbf{\textcolor{blue!60}{0.1432}} & {\scriptsize 0.2827}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.043}}
+\\
+
+& \textbf{IOA}
+& {\scriptsize \textbf{\textcolor{blue!60}{-0.0374}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.498}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.3070}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.010}}} & {\scriptsize 0.2210}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.010}}}
+& {\scriptsize \textbf{\textcolor{blue!60}{0.0887}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.390}}} & {\scriptsize 0.3998}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.004}} & {\scriptsize 0.1729}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.029}}}
+& {\scriptsize -0.0908}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.238}}} & {\scriptsize 0.2799}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.137}} & {\scriptsize 0.3505}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.025}}}
+\\
+
+& \textbf{DOA}
+& {\scriptsize 0.0071}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.454}}} & {\scriptsize 0.4038}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.087}} & {\scriptsize \textbf{\textcolor{blue!60}{0.5084}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.297}}}
+& {\scriptsize 0.1249}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.354}}} & {\scriptsize 0.4448}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.049}} & {\scriptsize \textbf{\textcolor{blue!60}{0.4196}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.275}}}
+& {\scriptsize \textbf{\textcolor{blue!60}{-0.1779}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.325}}} & {\scriptsize 0.3816}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.238}} & {\scriptsize \textbf{\textcolor{blue!60}{0.6078}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.282}}}
+\\
+
+& \textbf{IOA+DOA}
+& {\scriptsize 0.2576}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.203}}} & {\scriptsize 0.6632}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.347}} & {\scriptsize 0.1885}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.023}}
+& {\scriptsize 0.2968}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.182}}} & {\scriptsize 0.4746}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.079}} & {\scriptsize 0.1934}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.049}}}
+& {\scriptsize 0.3915}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.244}} & {\scriptsize 0.7749}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.632}} & {\scriptsize 0.1306}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.195}}
+\\
+\midrule
+
+\multirow[c]{5}{*}{MaskCLIP}
+& Without Attack
+& {\scriptsize 0.5587} & -- & {\scriptsize 0.1617}
+& {\scriptsize 0.5683} & -- & {\scriptsize 0.1232}
+& {\scriptsize 0.5404} & -- & {\scriptsize 0.1564}
+\\
+
+& X-Shift
+& {\scriptsize 0.6747}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.116}} & 0.4278 & {\scriptsize 0.1416}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.020}}
+& {\scriptsize 0.7165}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.148}} & 0.5572 & {\scriptsize 0.0937}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.029}}
+& {\scriptsize 0.7855}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.245}} & 0.4027 & {\scriptsize 0.0977}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.059}}
+\\
+
+& \textbf{IOA}
+& {\scriptsize \textbf{\textcolor{blue!60}{0.1411}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.418}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.4037}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.024}}} & {\scriptsize 0.1470}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.015}}
+& {\scriptsize \textbf{\textcolor{blue!60}{0.2185}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.350}}} & {\scriptsize 0.5470}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.010}}} & {\scriptsize 0.1021}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.021}}
+& {\scriptsize 0.4812}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.059}}} & {\scriptsize 0.4691}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.066}} & {\scriptsize 0.0985}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.058}}
+\\
+
+& \textbf{DOA}
+& {\scriptsize 0.2255}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.333}}} & {\scriptsize 0.4545}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.027}} & {\scriptsize \textbf{\textcolor{blue!60}{0.3625}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.201}}}
+& {\scriptsize 0.2470}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.321}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.5111}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.046}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.3088}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.186}}}
+& {\scriptsize \textbf{\textcolor{blue!60}{0.3798}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.161}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.3743}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.028}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.3147}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.158}}}
+\\
+& \textbf{IOA+DOA}
+& {\scriptsize 0.2723}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.286}}} & {\scriptsize 0.7195}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.292}} & {\scriptsize 0.1744}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.013}}}
+& {\scriptsize 0.4788}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.090}}} & {\scriptsize 0.8385}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.281}} & {\scriptsize 0.1516}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.028}}}
+& {\scriptsize 0.4277}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.113}}} & {\scriptsize 0.8630}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.460}} & {\scriptsize 0.1411}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.015}}
+\\
+
+\midrule
+
+\multirow[c]{5}{*}{RISE}
+& Without Attack
+& {\scriptsize 0.3497} & -- & {\scriptsize 0.3107}
+& {\scriptsize 0.3552} & -- & {\scriptsize 0.2353}
+& {\scriptsize 0.3006} & -- & {\scriptsize 0.2886}
+\\
+
+& X-Shift
+& {\scriptsize 0.4623}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.113}} & 0.0644 & {\scriptsize 0.2905}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.020}}
+& {\scriptsize 0.5586}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.203}} & 0.0575 & {\scriptsize 0.1844}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.051}}
+& {\scriptsize 0.5395}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.239}} & 0.0257 & {\scriptsize 0.2557}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.033}}
+\\
+
+& \textbf{IOA}
+& {\scriptsize \textbf{\textcolor{blue!60}{0.0417}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.308}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.0060}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.058}}} & {\scriptsize 0.2167}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.094}}
+& {\scriptsize \textbf{\textcolor{blue!60}{0.0943}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.261}}} & {\scriptsize 0.0528}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.005}}} & {\scriptsize 0.1909}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.044}}
+& {\scriptsize \textbf{\textcolor{blue!60}{0.0967}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.204}}} & {\scriptsize 0.0213}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.004}}} & {\scriptsize 0.3204}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.032}}}
+\\
+
+& \textbf{DOA}
+& {\scriptsize 0.1918}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.158}}} & {\scriptsize 0.0090}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.055}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.5424}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.232}}}
+& {\scriptsize 0.1692}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.186}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.0274}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.030}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.5140}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.279}}}
+& {\scriptsize 0.2116}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.089}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.0044}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.021}}} & {\scriptsize \textbf{\textcolor{blue!60}{0.5639}}}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.275}}}
+\\
+
+
+& \textbf{IOA+DOA}
+& {\scriptsize 0.1741}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.176}}} & {\scriptsize 0.0270}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.037}}} & {\scriptsize 0.2556}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.055}}
+& {\scriptsize 0.2535}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.102}}} & {\scriptsize 0.0554}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.002}}} & {\scriptsize 0.2397}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{+.004}}}
+& {\scriptsize 0.2536}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny \textcolor{red}{-.047}}} & {\scriptsize 0.0433}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny +.018}} & {\scriptsize 0.2133}{\raisebox{-0.65ex}{\hspace{0.12em}\tiny -.075}}
+\\
+
+\bottomrule
+\end{tabular}%
+}
+\end{table*}

@@ -1,0 +1,138 @@
+\begin{table*}[t]
+\centering
+% \scriptsize
+% \renewcommand{\arraystretch}{0.92}
+\setlength{\tabcolsep}{3pt}
+
+\caption{
+Transfer Attack (Average across three datasets).
+IMD ($\downarrow$), Spearman ($\downarrow$), and ROAD ($\uparrow$).
+}
+\vspace{4pt}
+
+\label{tab:transfer_combined}
+
+\resizebox{\textwidth}{!}{
+\begin{tabular}{ll|ccccc|ccccc|ccccc}
+\toprule
+
+& &
+\multicolumn{5}{c|}{\textbf{IMD} $\downarrow$} &
+\multicolumn{5}{c|}{\textbf{SRC} $\downarrow$} &
+\multicolumn{5}{c}{\textbf{ROAD} $\uparrow$}
+\\
+
+\textbf{Attack}
+& \textbf{Source}
+& \multicolumn{5}{c|}{\textbf{Target Explainer}}
+& \multicolumn{5}{c|}{\textbf{Target Explainer}}
+& \multicolumn{5}{c}{\textbf{Target Explainer}}
+\\
+
+& 
+& GradECLIP & GAME & GradCAM & MaskCLIP & RISE
+& GradECLIP & GAME & GradCAM & MaskCLIP & RISE
+& GradECLIP & GAME & GradCAM & MaskCLIP & RISE
+\\
+
+\midrule
+
+X-Shift
+& --
+& 0.7502 & 0.7315 & 0.5208 & 0.6439 & 0.5201
+& 0.5891 & 0.4506 & 0.2850 & 0.4626 & 0.0492
+& 0.0989 & 0.1214 & 0.2104 & 0.1110 & 0.2435
+\\
+
+\midrule
+
+\multirow{5}{*}{IOA}
+& GradECLIP
+& \textbf{0.2575} & 0.3404 & 0.1179 & 0.3292 & 0.2307
+& \textbf{0.6088} & 0.4249 & 0.3102 & 0.4676 & 0.0324
+& \textbf{0.1263} & 0.1300 & 0.2008 & 0.1195 & 0.1921
+\\
+& GAME
+& 0.3557 & \textbf{0.2607} & 0.1722 & 0.3226 & 0.2401
+& 0.5824 & \textbf{0.4280} & 0.2913 & 0.4605 & 0.0170
+& 0.1140 & \textbf{0.1398} & 0.1787 & 0.1185 & 0.1883
+\\
+& GradCAM
+& 0.3823 & 0.3994 & \textbf{-0.0132} & 0.3877 & 0.2675
+& 0.5398 & 0.3954 & \textbf{0.3289} & 0.4468 & 0.0325
+& 0.1189 & 0.1406 & \textbf{0.2481} & 0.1244 & 0.1812
+\\
+& MaskCLIP
+& 0.3540 & 0.3289 & 0.1564 & \textbf{0.2803} & 0.2347
+& 0.5851 & 0.4376 & 0.3080 & \textbf{0.4733} & 0.0269
+& 0.1135 & 0.1243 & 0.1960 & \textbf{0.1159} & 0.1795
+\\
+& RISE
+& 0.4325 & 0.4143 & 0.2047 & 0.3997 & \textbf{0.0776}
+& 0.5694 & 0.4239 & 0.2812 & 0.4676 & \textbf{0.0267}
+& 0.1197 & 0.1304 & 0.1770 & 0.1091 & \textbf{0.2427}
+\\
+
+\midrule
+
+\multirow{5}{*}{DOA}
+& GradECLIP
+& \textbf{0.2913} & 0.3877 & 0.1515 & 0.3581 & 0.2310
+& \textbf{0.5508} & 0.3990 & 0.3827 & 0.4620 & 0.0266
+& \textbf{0.3324} & 0.3183 & 0.4167 & 0.2963 & 0.4114
+\\
+& GAME
+& 0.4438 & \textbf{0.2845} & 0.2298 & 0.3995 & 0.2273
+& 0.5946 & \textbf{0.4172} & 0.3777 & 0.4555 & 0.0239
+& 0.2445 & \textbf{0.3662} & 0.3680 & 0.2737 & 0.4121
+\\
+& GradCAM
+& 0.5688 & 0.5911 & \textbf{-0.0153} & 0.5579 & 0.3452
+& 0.6445 & 0.4478 & \textbf{0.4101} & 0.5097 & 0.0245
+& 0.1937 & 0.2035 & \textbf{0.5119} & 0.1971 & 0.3694
+\\
+& MaskCLIP
+& 0.3959 & 0.3751 & 0.1919 & \textbf{0.2841} & 0.2355
+& 0.5832 & 0.3990 & 0.3753 & \textbf{0.4466} & 0.0297
+& 0.2718 & 0.3179 & 0.3832 & \textbf{0.3287} & 0.4027
+\\
+& RISE
+& 0.6028 & 0.5325 & 0.2795 & 0.5670 & \textbf{0.1909}
+& 0.6588 & 0.4844 & 0.4340 & 0.5402 & \textbf{0.0136}
+& 0.2057 & 0.2836 & 0.4206 & 0.2361 & \textbf{0.5401}
+\\
+
+\midrule
+
+\multirow{5}{*}{IOA+DOA}
+& GradECLIP
+& \textbf{0.4360} & 0.4167 & 0.2321 & 0.3947 & 0.2770
+& \textbf{0.8500} & 0.8066 & 0.7931 & 0.8234 & 0.0302
+& \textbf{0.1437} & 0.1767 & 0.2255 & 0.1530 & 0.2522
+\\
+& GAME
+& 0.4194 & \textbf{0.3886} & 0.2398 & 0.3516 & 0.2738
+& 0.8153 & \textbf{0.7423} & 0.7421 & 0.7797 & 0.0138
+& 0.1494 & \textbf{0.1769} & 0.2120 & 0.1528 & 0.2440
+\\
+& GradCAM
+& 0.4928 & 0.4747 & \textbf{0.2500} & 0.4445 & 0.3271
+& 0.7891 & 0.7364 & \textbf{0.6376} & 0.7473 & 0.0405
+& 0.1542 & 0.1925 & \textbf{0.1698} & 0.1611 & 0.2484
+\\
+& MaskCLIP
+& 0.4580 & 0.4175 & 0.2600 & \textbf{0.3929} & 0.2796
+& 0.8414 & 0.7979 & 0.7818 & \textbf{0.8219} & 0.0393
+& 0.1485 & 0.1740 & 0.2209 & \textbf{0.1557} & 0.2514
+\\
+& RISE
+& 0.4288 & 0.3930 & 0.2348 & 0.3658 & \textbf{0.2136}
+& 0.7814 & 0.7034 & 0.6460 & 0.7166 & \textbf{0.0419}
+& 0.1479 & 0.1861 & 0.2030 & 0.1564 & \textbf{0.2362}
+\\
+
+\bottomrule
+\end{tabular}
+}
+
+\end{table*}
