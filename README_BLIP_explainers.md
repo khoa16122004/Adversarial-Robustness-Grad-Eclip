@@ -158,6 +158,68 @@ the user will run them in their BLIP environment. In particular, the local
 checkpoint architecture and the proposed dependency combination still need
 runtime verification.
 
+## Clean BLIP baseline (CUDA / Slurm)
+
+`clean_score_BLIP.py` follows the CLIP clean-score pipeline: predicted-class
+saliency, deletion/insertion causal curves, and noisy-linear ROAD (10% through
+90% removal). It reuses the BLIP classifier/explainers and shared causal engines.
+Clean ROAD and attack ROAD use the same implementation in `road_score_BLIP.py`.
+No attack is performed.
+
+Submit from the server repository root:
+
+```bash
+mkdir -p BLIP_faithfulness
+sbatch script_sh/clean_blip.sh
+```
+
+Default output:
+`BLIP_result/ImageNet/clean/<explainer>/<sample-id>/`.
+Each sample contains `clean_image_resized.png`, `saliency/<explainer>_saliency.npy`
+and previews, insertion/deletion summaries and JSON, `curve_information.json`,
+and `road_deletion_information.json`. All five explainers run by default;
+append `--methods eclip` to the sbatch command for a single-explainer check.
+Complete samples are skipped; differing recorded settings fail unless
+`--overwrite` is explicitly supplied.
+
+To run **all three datasets and all five explainers** in one Slurm job:
+
+```bash
+mkdir -p BLIP_faithfulness
+sbatch script_sh/clean_blip_all.sh
+```
+
+This launcher reads existing `BLIP_result/<dataset>/eps_*/**/run_config.json`
+to obtain each dataset's image directory, sample JSON, checkpoint, class names,
+and inference/explainer settings. It validates all three datasets before starting.
+Inconsistent attack configurations fail explicitly rather than mixing baselines.
+Outputs stay under each existing dataset folder's `clean/` directory, with
+saliency, insertion/deletion curves and summaries, and ROAD for all five methods.
+Clean baselines do not depend on epsilon, so they are generated only once.
+Use `RESULT_ROOT=/path/to/BLIP_reuslt sbatch script_sh/clean_blip_all.sh` for an
+alternative result root, or `CHECKPOINT=/path/to/BLIP.pth` to relocate the same
+checkpoint. All recorded data/sample paths must still exist on the server.
+
+Use the **same checkpoint, last-heads setting, class names, sample IDs, and
+explainer settings as the attack runs**. Defaults match `script_sh/run_blip.sh`,
+including `LAST_HEADS=1`. For other datasets, override all relevant inputs:
+
+```bash
+DATASET=CUB IMG_DIR="/path/to/CUB/images" SAMPLE_PATH="/path/to/cub_samples.json" \
+  sbatch script_sh/clean_blip.sh --classnames-path /path/to/cub_classnames.txt
+```
+
+Do not pass custom class names if the corresponding attacks used ImageNet
+class names. The output root can be overridden with `OUTPUT_ROOT`, including
+if your server folder is spelled `BLIP_reuslt` rather than `BLIP_result`.
+This runner needs CUDA because the shared causal engine uses CUDA directly.
+
+After clean evaluation, rerun the exporter below. It reads the clean baseline
+for Without Attack and pairs its saliency with attack maps to calculate SRC.
+For attack ROAD only, use
+`EPSILON=16 sbatch script_sh/road_blip.sh`; it writes ROAD JSON beside existing
+attack samples without regenerating attacks.
+
 ## Export a BLIP faithfulness LaTeX table (CPU only)
 
 From the repository root, after copying results into `BLIP_result`:
