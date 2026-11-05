@@ -19,7 +19,7 @@ export PYTHONUNBUFFERED=1
 export SSL_CERT_FILE="$(python -c 'import certifi; print(certifi.where())')"
 export REQUESTS_CA_BUNDLE="$SSL_CERT_FILE"
 
-python - "${RESULT_ROOT:-$PWD/BLIP_result_rerun}" "${OUTPUT_ROOT:-$PWD/BLIP_result_clean}" "$@" <<'PY'
+python - "${RESULT_ROOT:-$PWD/BLIP_result_rerun}" "${OUTPUT_ROOT:-$PWD/BLIP_result_xshift}" "$@" <<'PY'
 import json
 import os
 from pathlib import Path

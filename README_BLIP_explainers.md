@@ -264,7 +264,7 @@ The launcher reads existing causal attack configurations from
 `BLIP_result_rerun/<dataset>/eps_16/`; run the causal attack launchers first so
 each dataset has a `run_config.json`. No separate X-Shift attack is run per
 explainer, and no other epsilon is generated.
-Outputs: `BLIP_result_clean/<dataset>/eps_16/<explainer>/xshift/<sample>/`.
+Outputs: `BLIP_result_xshift/<dataset>/eps_16/<explainer>/xshift/<sample>/`.
 Override the configuration source with `RESULT_ROOT=/path/to/results` and
 the output root with `OUTPUT_ROOT=/path/to/output`. Both all-dataset launchers
 automatically create missing output directories, including dataset/method/sample
