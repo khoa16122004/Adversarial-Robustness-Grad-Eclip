@@ -196,21 +196,29 @@ mkdir -p BLIP_faithfulness
 sbatch script_sh/clean_blip_all.sh
 ```
 
-This launcher reads existing `BLIP_result_rerun/<dataset>/eps_*/**/run_config.json`
-to obtain each dataset's image directory, sample JSON, checkpoint, class names,
-and inference/explainer settings. It validates all three datasets before starting.
-Inconsistent attack configurations fail explicitly rather than mixing baselines.
+This launcher uses explicit dataset inputs, without reading any attack results
+or requiring a result root. Both all-dataset launchers use these defaults:
+
+| Dataset | Image directory | Class names |
+| --- | --- | --- |
+| ImageNet | `/datastore/quanphm/datasets/ImageNet/val` | `imgnet1k_label.json` |
+| StandfordPet | `StandfordPet_Dataset` | `pet.json` |
+| cub | `cub_dataset` | `cub.json` |
+
+Relative paths are under the repository root. Sample JSONs are
+`classification_reuslt/{imagenet,pet,cub}/blip_100.json`.
+Override per-dataset inputs using `IMAGENET_IMG_DIR`, `PET_IMG_DIR`, `CUB_IMG_DIR`,
+and the matching `_SAMPLE_PATH` or `_CLASSNAMES_PATH` variables.
 Outputs are written under `BLIP_result_clean/<dataset>/clean/`, with
 saliency, insertion/deletion curves and summaries, and ROAD for all five methods.
 Clean baselines do not depend on epsilon, so they are generated only once.
 Default outputs are `BLIP_result_clean/<dataset>/clean/<explainer>/<sample-id>/`.
-Use `RESULT_ROOT=/path/to/results sbatch script_sh/clean_blip_all.sh` for an
-alternative configuration source, `OUTPUT_ROOT=/path/to/output` to change the
+Use `OUTPUT_ROOT=/path/to/output` to change the
 output root, or `CHECKPOINT=/path/to/BLIP.pth` to relocate the same
-checkpoint. All recorded data/sample paths must still exist on the server.
+checkpoint (default: `blip_checkpoint.pth`). Input data/sample paths must exist.
 
 Use the **same checkpoint, last-heads setting, class names, sample IDs, and
-explainer settings as the attack runs**. Defaults match `script_sh/run_blip.sh`,
+explainer settings as the attack runs**. Defaults match `script_sh/run_blip_ins.sh`,
 including `LAST_HEADS=1`. For other datasets, override all relevant inputs:
 
 ```bash
@@ -258,17 +266,18 @@ sbatch script_sh/xshift_blip_all.sh
 `XShift_score_BLIP.py` reuses the CLIP X-Shift loss, projected sign update, and
 maximal-map-change class-preserving candidate selection (including clean step 0).
 BLIP normalized visual tokens are projected through `vision_proj` into the same
-embedding space as classifier text weights. Attention settings match the recorded
-attack configuration. One attack per image is evaluated with all five explainers.
-The launcher reads existing causal attack configurations from
-`BLIP_result_rerun/<dataset>/eps_16/`; run the causal attack launchers first so
-each dataset has a `run_config.json`. No separate X-Shift attack is run per
+embedding space as classifier text weights. Attention defaults to `LAST_HEADS=1`,
+as in the causal attack launcher. One attack per image is evaluated with all five
+explainers. The launcher uses the explicit dataset inputs listed above; no
+existing attack output or configuration is required. The Python runner still
+accepts `--run-config` for compatibility with recorded runs.
+No separate X-Shift attack is run per
 explainer, and no other epsilon is generated.
 Outputs: `BLIP_result_xshift/<dataset>/eps_16/<explainer>/xshift/<sample>/`.
-Override the configuration source with `RESULT_ROOT=/path/to/results` and
-the output root with `OUTPUT_ROOT=/path/to/output`. Both all-dataset launchers
+Override the output root with `OUTPUT_ROOT=/path/to/output`. Both all-dataset launchers
 automatically create missing output directories, including dataset/method/sample
-subdirectories; the input configuration directories must already exist.
+subdirectories. Only input images, sample/class-name JSONs, and the checkpoint
+must already exist.
 The exporter recognizes the maps for SRC; the ROAD runner supports `mode=xshift`.
 
 X-Shift passes CPU image tensors to the causal rerun, so the former CUDA-only

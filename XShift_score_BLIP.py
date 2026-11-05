@@ -35,8 +35,24 @@ def encode_blip_tokens(adapter, images):
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-config", type=Path, required=True,
-                        help="Existing BLIP attack configuration for this dataset")
+    parser.add_argument("--run-config", type=Path,
+                        help="Optional existing BLIP configuration; otherwise supply dataset inputs")
+    parser.add_argument("--img-dir")
+    parser.add_argument("--sample-path")
+    parser.add_argument("--classnames-path")
+    parser.add_argument("--vit", choices=("base", "large"), default="base")
+    parser.add_argument("--last-heads", choices=("1", "native"), default="1")
+    parser.add_argument("--image-size", type=int, choices=(224,), default=224)
+    parser.add_argument("--step", type=int, default=224)
+    parser.add_argument("--kernel-size", type=int, default=11)
+    parser.add_argument("--kernel-sigma", type=float, default=5)
+    parser.add_argument("--prompt-template", default="a photo of {}")
+    parser.add_argument("--game-start-layer", type=int, default=-1)
+    parser.add_argument("--rise-masks", type=int, default=2000)
+    parser.add_argument("--rise-grid", type=int, default=8)
+    parser.add_argument("--rise-prob", type=float, default=0.5)
+    parser.add_argument("--rise-batch-size", type=int, default=50)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output-dir", type=Path, required=True,
                         help="Dataset epsilon root; appends <explainer>/xshift/<sample>")
     parser.add_argument("--blip-root", type=Path, default=Path("BLIP"))
@@ -55,6 +71,19 @@ def parse_args():
     parser.add_argument("--save-process", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
+    if args.run_config is None:
+        if not args.checkpoint or not args.img_dir or not args.sample_path:
+            parser.error("Without --run-config, --checkpoint, --img-dir and --sample-path are required")
+        if min(args.step, args.rise_masks, args.rise_grid, args.rise_batch_size) <= 0:
+            parser.error("Step and RISE sizes must be positive")
+        if not 0 < args.rise_prob < 1 or args.seed < 0:
+            parser.error("RISE probability must be in (0, 1); seed must be nonnegative")
+        if args.kernel_size <= 0 or args.kernel_size % 2 != 1 or not math.isfinite(args.kernel_sigma) or args.kernel_sigma <= 0:
+            parser.error("Blur kernel must be positive and odd; sigma must be finite and positive")
+        if not -1 <= args.game_start_layer < (12 if args.vit == "base" else 24):
+            parser.error("GAME start layer is outside the visual block range")
+    elif any(value is not None for value in (args.img_dir, args.sample_path, args.classnames_path)):
+        parser.error("Dataset inputs cannot be combined with --run-config")
     for name in ("eps", "alpha", "xai_alpha", "lambda_pred", "lambda_patch", "lambda_ent", "margin"):
         value = getattr(args, name)
         if not math.isfinite(value) or value < 0:
@@ -82,7 +111,18 @@ def completed(folder, method, image_size, step, save_process):
 def main():
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    config = json.loads(args.run_config.read_text(encoding="utf-8"))
+    if args.run_config is not None:
+        config = json.loads(args.run_config.read_text(encoding="utf-8"))
+    else:
+        config = {
+            key: getattr(args, key) for key in (
+                "img_dir", "sample_path", "classnames_path", "vit", "last_heads",
+                "image_size", "step", "kernel_size", "kernel_sigma",
+                "prompt_template", "game_start_layer", "rise_masks", "rise_grid",
+                "rise_prob", "rise_batch_size", "seed",
+            )
+        }
+        config.update(model="BLIP_ITC", target_source="pred", checkpoint=str(args.checkpoint))
     if config.get("model") != "BLIP_ITC":
         raise ValueError(f"Expected a BLIP attack configuration: {args.run_config}")
     if config.get("target_source", "pred") != "pred":
@@ -98,6 +138,10 @@ def main():
         if not path.is_file():
             raise FileNotFoundError(f"Required file not found: {path}")
     image_root = Path(config["img_dir"])
+    if not image_root.is_dir():
+        raise FileNotFoundError(f"Image directory not found: {image_root}")
+    if config.get("classnames_path") and not Path(config["classnames_path"]).is_file():
+        raise FileNotFoundError(f"Class names file not found: {config['classnames_path']}")
     samples = json.loads(Path(config["sample_path"]).read_text(encoding="utf-8"))
     if not isinstance(samples, dict) or not samples:
         raise ValueError("Sample JSON must contain a nonempty sample-id to image-path mapping")
