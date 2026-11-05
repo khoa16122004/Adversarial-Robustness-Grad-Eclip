@@ -3,7 +3,7 @@
 #SBATCH --output=BLIP_faithfulness/xshift_16_%j.out
 #SBATCH --error=BLIP_faithfulness/xshift_16_%j.err
 #SBATCH --account=uit
-#SBATCH --partition=normal
+#SBATCH --partition=small
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=8G
