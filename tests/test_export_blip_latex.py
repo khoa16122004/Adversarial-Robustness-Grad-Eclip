@@ -86,6 +86,65 @@ class ExportBLIPLatexTests(unittest.TestCase):
             self.assertAlmostEqual(means[("ImageNet", "GradECLIP", "DOA", "SRC")], -1)
             self.assertNotIn(("ImageNet", "GradECLIP", "IOA+DOA", "SRC"), means)
 
+    def test_xshift_only_cli_with_separate_clean_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "BLIP_result_xshift"
+            clean_root = base / "BLIP_result_clean"
+            for dataset, _ in exporter.DATASETS:
+                for explainer, aliases in exporter.EXPLAINERS:
+                    method = sorted(aliases)[0]
+                    clean = clean_root / dataset / "clean" / method / "sample" / "saliency"
+                    clean.mkdir(parents=True)
+                    values = np.array([[1., 2.], [3., 4.]])
+                    np.save(clean / f"{method}_saliency.npy", values)
+                    for mode in ("xshift", "ins"):
+                        sample = root / dataset / "eps_16" / method / mode / "sample"
+                        sample.mkdir(parents=True)
+                        (sample / "curve_information.json").write_text(json.dumps({
+                            "attack_mode": mode,
+                            "rerun": {
+                                "ins": {"curve": [0., 2., 2.], "auc": 999},
+                                "del": {"curve": [4., 0., 0.], "auc": 999},
+                            },
+                        }), encoding="utf-8")
+                        (sample / "road_deletion_information.json").write_text(json.dumps({
+                            "deletion_fair_auc": 0.625, "deletion_auc": 999,
+                        }), encoding="utf-8")
+                        if mode == "xshift":
+                            np.save(sample / f"del_xshift_{method}_saliency.npy", -values)
+            other = root / "ImageNet" / "eps_8"
+            other.mkdir()
+            (other / "curve_information.json").write_text("not JSON", encoding="utf-8")
+            with patch("sys.argv", [
+                "export_blip_latex.py", "--xshift-only", "--epsilon", "16",
+                "--input-root", str(root), "--clean-root", str(clean_root),
+            ]):
+                exporter.main()
+            table = (root / "blip_xshift_faithfulness_eps_16.tex").read_text(encoding="utf-8")
+            rows = [
+                line for line in table.splitlines()
+                if any(line.startswith(name + " & ") for name, _ in exporter.EXPLAINERS)
+            ]
+            self.assertEqual(len(rows), 5)
+            for row, (explainer, _) in zip(rows, exporter.EXPLAINERS):
+                self.assertEqual(
+                    row,
+                    " & ".join(
+                        [explainer, "X-Shift"] + ["0.5000", "-1.0000", "0.6250"] * 3
+                    ) + r" \\",
+                )
+            self.assertNotIn("Without Attack", table)
+            self.assertNotIn("IOA", table)
+
+    def test_xshift_only_requires_clean_root(self):
+        with patch("sys.argv", [
+            "export_blip_latex.py", "--xshift-only", "--epsilon", "16",
+        ]):
+            with self.assertRaises(SystemExit) as error:
+                exporter.main()
+        self.assertEqual(error.exception.code, 2)
+
     def test_separate_clean_root_and_shape_validation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

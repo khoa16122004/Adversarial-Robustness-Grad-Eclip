@@ -186,6 +186,8 @@ def collect_metrics(root, epsilon, clean_root=None, expected_attacks=ATTACKS):
         if not all((dataset, explainer, attack)):
             logging.warning("Unrecognized dataset/explainer/attack; skipping %s", path)
             continue
+        if attack not in expected_attacks:
+            continue
         if file_epsilon != epsilon and not (
             file_epsilon is None and attack == "Without Attack"
         ):
@@ -250,7 +252,7 @@ def collect_metrics(root, epsilon, clean_root=None, expected_attacks=ATTACKS):
     return means
 
 
-def build_clean_table(means):
+def build_single_attack_table(means, attack):
     lines = [
         r"\begin{tabular}{llrrrrrrrrr}",
         r"\toprule",
@@ -267,11 +269,21 @@ def build_clean_table(means):
         cells = []
         for dataset, _ in DATASETS:
             for metric in METRICS:
-                value = means.get((dataset, explainer, "Without Attack", metric))
-                cells.append("--" if value is None or metric == "SRC" else f"{value:.4f}")
-        lines.append(" & ".join([explainer, "Without Attack"] + cells) + r" \\")
+                if attack == "Without Attack" and metric == "SRC":
+                    cells.append("--")
+                    continue
+                value = means.get((dataset, explainer, attack, metric))
+                if value is None:
+                    logging.warning("Missing %s / %s / %s / %s; cell set to --",
+                                    dataset, explainer, attack, metric)
+                cells.append("--" if value is None else f"{value:.4f}")
+        lines.append(" & ".join([explainer, attack] + cells) + r" \\")
     lines.extend([r"\bottomrule", r"\end{tabular}"])
     return "\n".join(lines) + "\n"
+
+
+def build_clean_table(means):
+    return build_single_attack_table(means, "Without Attack")
 
 
 def render_cell(means, dataset, explainer, attack, metric):
@@ -341,9 +353,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-root", type=Path, default=Path("BLIP_result"))
     parser.add_argument("--epsilon", help="Single pixel budget, e.g. 2 or eps_2")
-    parser.add_argument(
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument(
         "--clean-only", action="store_true",
         help="Export only clean IMD/SRC/ROAD rows from a completed clean output root",
+    )
+    selection.add_argument(
+        "--xshift-only", action="store_true",
+        help="Export only X-Shift IMD/SRC/ROAD rows; requires --clean-root for SRC",
     )
     parser.add_argument(
         "--clean-root", type=Path,
@@ -351,6 +368,8 @@ def main():
     )
     parser.add_argument("--output-tex", type=Path)
     args = parser.parse_args()
+    if args.xshift_only and args.clean_root is None:
+        parser.error("--xshift-only requires --clean-root to compare saliency maps")
     if args.epsilon is None and not args.clean_only:
         parser.error("--epsilon is required unless --clean-only is set")
     epsilon = (args.epsilon or "0").removeprefix("eps_")
@@ -364,11 +383,18 @@ def main():
     clean_root = args.clean_root.expanduser().resolve() if args.clean_root else None
     if clean_root is not None and not clean_root.is_dir():
         raise FileNotFoundError(f"Clean root is not a directory: {clean_root}")
-    expected_attacks = ("Without Attack",) if args.clean_only else ATTACKS
+    expected_attacks = (
+        ("Without Attack",) if args.clean_only
+        else ("X-Shift",) if args.xshift_only
+        else ATTACKS
+    )
     means = collect_metrics(root, epsilon, clean_root, expected_attacks)
     if args.clean_only:
         output = args.output_tex or root / "blip_clean_faithfulness.tex"
         table = build_clean_table(means)
+    elif args.xshift_only:
+        output = args.output_tex or root / f"blip_xshift_faithfulness_eps_{epsilon}.tex"
+        table = build_single_attack_table(means, "X-Shift")
     else:
         output = args.output_tex or root / f"blip_faithfulness_eps_{epsilon}.tex"
         table = build_table(means, epsilon)
