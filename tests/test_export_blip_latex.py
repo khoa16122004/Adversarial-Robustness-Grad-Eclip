@@ -16,6 +16,36 @@ SPEC.loader.exec_module(exporter)
 
 
 class ExportBLIPLatexTests(unittest.TestCase):
+    def test_clean_only_table_uses_clean_imd_and_road(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sample = root / "ImageNet" / "clean" / "eclip" / "sample"
+            sample.mkdir(parents=True)
+            (sample / "curve_information.json").write_text(json.dumps({
+                "attack_mode": "clean",
+                "rerun": {
+                    "ins": {"curve": [0., 1.]},
+                    "del": {"curve": [1., 0.]},
+                },
+            }), encoding="utf-8")
+            (sample / "road_deletion_information.json").write_text(json.dumps({
+                "deletion_fair_auc": 0.625,
+            }), encoding="utf-8")
+
+            means = exporter.collect_metrics(
+                root, "0", expected_attacks=("Without Attack",)
+            )
+            table = exporter.build_clean_table(means)
+
+            self.assertAlmostEqual(
+                means[("ImageNet", "GradECLIP", "Without Attack", "IMD")], 0.
+            )
+            self.assertAlmostEqual(
+                means[("ImageNet", "GradECLIP", "Without Attack", "ROAD")], 0.625
+            )
+            self.assertIn("GradECLIP & Without Attack & 0.0000 & -- & 0.6250", table)
+            self.assertEqual(table.count("Without Attack"), 5)
+
     def test_spearman_from_clean_and_attack_maps(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -165,7 +165,7 @@ def saliency_spearman(clean_path, attack_path):
     return float(spearmanr(maps[0].ravel(), maps[1].ravel())[0])
 
 
-def collect_metrics(root, epsilon, clean_root=None):
+def collect_metrics(root, epsilon, clean_root=None, expected_attacks=ATTACKS):
     # Keep sample-level pairs: never subtract means over unmatched sample sets.
     samples = {}
     scanned = 0
@@ -241,13 +241,37 @@ def collect_metrics(root, epsilon, clean_root=None):
                 values.setdefault((dataset, explainer, attack, metric), []).append(record[metric])
     means = {key: statistics.mean(items) for key, items in values.items()}
     for dataset, _ in DATASETS:
-        for attack in ATTACKS:
+        for attack in expected_attacks:
             count = sum(
                 1 for key in means if key[0] == dataset and key[2] == attack
             )
             if not count:
                 logging.warning("No metrics for %s / %s; cells left blank", dataset, attack)
     return means
+
+
+def build_clean_table(means):
+    lines = [
+        r"\begin{tabular}{llrrrrrrrrr}",
+        r"\toprule",
+        r"& & \multicolumn{3}{c}{ImageNet} & \multicolumn{3}{c}{StanfordPets} "
+        r"& \multicolumn{3}{c}{CUB} \\",
+        r"\cmidrule(lr){3-5}\cmidrule(lr){6-8}\cmidrule(lr){9-11}",
+        r"\textbf{Explainer} & \textbf{Attack} & "
+        + " & ".join(
+            [r"IMD $\downarrow$", r"SRC $\downarrow$", r"ROAD $\uparrow$"] * 3
+        ) + r" \\",
+        r"\midrule",
+    ]
+    for explainer, _ in EXPLAINERS:
+        cells = []
+        for dataset, _ in DATASETS:
+            for metric in METRICS:
+                value = means.get((dataset, explainer, "Without Attack", metric))
+                cells.append("--" if value is None or metric == "SRC" else f"{value:.4f}")
+        lines.append(" & ".join([explainer, "Without Attack"] + cells) + r" \\")
+    lines.extend([r"\bottomrule", r"\end{tabular}"])
+    return "\n".join(lines) + "\n"
 
 
 def render_cell(means, dataset, explainer, attack, metric):
@@ -316,14 +340,20 @@ def build_table(means, epsilon):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-root", type=Path, default=Path("BLIP_result"))
-    parser.add_argument("--epsilon", required=True, help="Single pixel budget, e.g. 2 or eps_2")
+    parser.add_argument("--epsilon", help="Single pixel budget, e.g. 2 or eps_2")
+    parser.add_argument(
+        "--clean-only", action="store_true",
+        help="Export only clean IMD/SRC/ROAD rows from a completed clean output root",
+    )
     parser.add_argument(
         "--clean-root", type=Path,
         help="Optional separate clean root: <dataset>/clean/<explainer>/<sample>/saliency/*.npy",
     )
     parser.add_argument("--output-tex", type=Path)
     args = parser.parse_args()
-    epsilon = args.epsilon.removeprefix("eps_")
+    if args.epsilon is None and not args.clean_only:
+        parser.error("--epsilon is required unless --clean-only is set")
+    epsilon = (args.epsilon or "0").removeprefix("eps_")
     if not epsilon.isdigit():
         parser.error("--epsilon must be a nonnegative integer (optionally prefixed eps_)")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -333,10 +363,16 @@ def main():
     clean_root = args.clean_root.expanduser().resolve() if args.clean_root else None
     if clean_root is not None and not clean_root.is_dir():
         raise FileNotFoundError(f"Clean root is not a directory: {clean_root}")
-    means = collect_metrics(root, epsilon, clean_root)
-    output = args.output_tex or root / f"blip_faithfulness_eps_{epsilon}.tex"
+    expected_attacks = ("Without Attack",) if args.clean_only else ATTACKS
+    means = collect_metrics(root, epsilon, clean_root, expected_attacks)
+    if args.clean_only:
+        output = args.output_tex or root / "blip_clean_faithfulness.tex"
+        table = build_clean_table(means)
+    else:
+        output = args.output_tex or root / f"blip_faithfulness_eps_{epsilon}.tex"
+        table = build_table(means, epsilon)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(build_table(means, epsilon), encoding="utf-8")
+    output.write_text(table, encoding="utf-8")
     logging.info("Saved %s (%d populated metric cells)", output, len(means))
 
 
