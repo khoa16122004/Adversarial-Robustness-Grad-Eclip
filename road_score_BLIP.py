@@ -19,6 +19,20 @@ from road_evaluation.road.imputed_dataset import ImputedDataset
 from util import build_causal_metric_model, load_classnames, normalize_ImageNet1k
 
 
+def attack_artifacts(sample_dir, mode, method):
+    if mode == "xshift":
+        image_name = "adversarial_image_xshift.png"
+        saliency_name = f"del_xshift_{method}_saliency.npy"
+    elif mode in ("ins", "del", "del+ins"):
+        prefix = "joint" if mode == "del+ins" else mode
+        image_suffix = "del_ins" if mode == "del+ins" else mode
+        image_name = f"adversarial_image_{image_suffix}.png"
+        saliency_name = f"{prefix}_del_adv_{method}_saliency.npy"
+    else:
+        raise ValueError(f"Unsupported attack mode: {mode}")
+    return sample_dir / image_name, sample_dir / saliency_name
+
+
 def evaluate(model, image, saliency, label, device, noise, seed):
     percentages = np.arange(1, 10, dtype=np.float64) / 10
     generator_state = np.random.get_state()
@@ -69,6 +83,11 @@ def main():
     parser.add_argument("--input-root", type=Path, default=Path("BLIP_result"))
     parser.add_argument("--epsilon", required=True, help="Single epsilon, e.g. 2")
     parser.add_argument("--datasets", nargs="+", default=None, help="Dataset folder names")
+    parser.add_argument(
+        "--modes", nargs="+", choices=("ins", "del", "del+ins", "xshift"),
+        default=["ins", "del", "del+ins", "xshift"],
+        help="Evaluate saved post-attack maps for these attack modes",
+    )
     parser.add_argument("--blip-root", type=Path, default=Path("BLIP"))
     parser.add_argument("--checkpoint", type=Path, default=None, help="Override recorded checkpoint")
     parser.add_argument("--device", default="cuda")
@@ -82,12 +101,13 @@ def main():
     if not epsilon.isdigit():
         parser.error("--epsilon must be a nonnegative integer")
     root = args.input_root.resolve()
-    configs = sorted(root.rglob("run_config.json"))
-    configs = [
-        path for path in configs
-        if f"eps_{epsilon}" in path.relative_to(root).parts
-        and (not args.datasets or path.relative_to(root).parts[0] in args.datasets)
-    ]
+    if not root.is_dir():
+        raise FileNotFoundError(f"Result root does not exist: {root}")
+    configs = sorted(
+        path for dataset in root.iterdir()
+        if dataset.is_dir() and (not args.datasets or dataset.name in args.datasets)
+        for path in (dataset / f"eps_{epsilon}").glob("**/run_config.json")
+    )
     if not configs:
         raise FileNotFoundError(f"No BLIP run_config.json for eps_{epsilon} under {root}")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -97,6 +117,7 @@ def main():
     sys.path.insert(0, str(args.blip_root.resolve()))
     processed = 0
     skipped = 0
+    discovered_modes = set()
     for config_path in configs:
         config = json.loads(config_path.read_text(encoding="utf-8"))
         if config.get("model") != "BLIP_ITC":
@@ -104,12 +125,20 @@ def main():
         mode = config["mode"]
         if mode not in ("ins", "del", "del+ins", "xshift"):
             raise ValueError(f"Unsupported attack mode {mode}: {config_path}")
+        if mode not in args.modes:
+            continue
+        discovered_modes.add(mode)
         config["checkpoint"] = args.checkpoint or Path(config["checkpoint"])
         config["blip_root"] = args.blip_root.resolve()
         if not config["checkpoint"].is_file():
             raise FileNotFoundError(f"Checkpoint not found: {config['checkpoint']}")
         pending = []
-        for info_path in sorted(config_path.parent.glob("*/curve_information.json")):
+        sample_infos = sorted(config_path.parent.glob("*/curve_information.json"))
+        if not sample_infos:
+            raise FileNotFoundError(f"No completed attack sample JSON under {config_path.parent}")
+        logging.info("ROAD group: %s | mode=%s | samples=%d",
+                     config_path.parent, mode, len(sample_infos))
+        for info_path in sample_infos:
             output = info_path.parent / "road_deletion_information.json"
             if output.exists() and not args.overwrite:
                 previous = json.loads(output.read_text(encoding="utf-8"))
@@ -133,15 +162,9 @@ def main():
         model = build_causal_metric_model(classifier)
         for info_path, output in pending:
             info = json.loads(info_path.read_text(encoding="utf-8"))
-            prefix = "joint" if mode == "del+ins" else mode
-            image_suffix = "del_ins" if mode == "del+ins" else mode
-            image_path = info_path.parent / f"adversarial_image_{image_suffix}.png"
-            saliency_name = (
-                f"del_xshift_{config['hm_type']}_saliency.npy"
-                if mode == "xshift"
-                else f"{prefix}_del_adv_{config['hm_type']}_saliency.npy"
+            image_path, saliency_path = attack_artifacts(
+                info_path.parent, mode, config["hm_type"],
             )
-            saliency_path = info_path.parent / saliency_name
             with Image.open(image_path) as source:
                 image = to_tensor(source.convert("RGB"))
             saliency = np.load(saliency_path, allow_pickle=False).squeeze()
@@ -158,6 +181,7 @@ def main():
             payload = evaluate(model, image, saliency, label, device, args.noise, args.seed)
             payload.update({
                 "model": "BLIP_ITC", "metric": "road_deletion",
+                "attack_mode": mode, "map_source": "post_attack",
                 "target_label": label, "target_source": "adv_pred_label",
                 "road_noise": args.noise, "road_seed": args.seed,
                 "checkpoint": str(config["checkpoint"]), "last_heads": config["last_heads"],
@@ -169,6 +193,12 @@ def main():
             processed += 1
             logging.info("Saved %s", output)
         del model, classifier, adapter
+    for mode in args.modes:
+        if mode not in discovered_modes:
+            logging.warning("No attack configurations for mode=%s at eps_%s; not evaluated",
+                            mode, epsilon)
+    if not discovered_modes:
+        raise FileNotFoundError(f"No configurations for requested modes: {args.modes}")
     logging.info("ROAD complete: processed=%d skipped=%d", processed, skipped)
 
 

@@ -109,7 +109,10 @@ class CausalMetric():
                     plt.show()
             if i < n_steps:
                 coords = salient_order[:, self.step * i:self.step * (i + 1)]
-                start.cpu().numpy().reshape(1, 3, HW)[0, :, coords] = finish.cpu().numpy().reshape(1, 3, HW)[0, :, coords]
+                indices = torch.as_tensor(coords[0].copy(), device=start.device)
+                rows = indices // start.shape[-1]
+                cols = indices % start.shape[-1]
+                start[0, :, rows, cols] = finish[0, :, rows, cols]
         return scores
 
     def evaluate(self, img_batch, exp_batch, batch_size):

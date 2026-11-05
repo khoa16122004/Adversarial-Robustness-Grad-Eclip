@@ -150,6 +150,52 @@ class BLIPAttackTests(unittest.TestCase):
         self.assertGreater(gradient.abs().sum().item(), 0)
         self.assertTrue(all(not parameter.requires_grad for parameter in adapter.parameters()))
 
+    def test_xshift_blip_tokens_and_class_preserving_selection(self):
+        from XShift_score import run_xshift_attack
+        from XShift_score_BLIP import encode_blip_tokens
+
+        adapter = self.make_adapter()
+        classifier = build_zero_shot_blip_classifier(adapter, ["dog", "bird"], "a photo of {}")
+        from util import normalize_ImageNet1k
+
+        for heads in ("1", "native"):
+            adapter.options.last_heads = heads
+            image = torch.full((1, 3, 224, 224), 0.5)
+            normalized = normalize_ImageNet1k(image).requires_grad_(True)
+            features, patches = adapter.encode_tokens(normalized)
+            self.assertEqual(patches.shape, (1, 196, 4))
+            torch.testing.assert_close(features, adapter.encode_image(normalized))
+            gradient = torch.autograd.grad(patches.square().sum(), normalized)[0]
+            self.assertTrue(torch.isfinite(gradient).all())
+            self.assertGreater(gradient.abs().sum().item(), 0)
+            with torch.no_grad():
+                label = classifier(normalized).argmax(dim=1).item()
+            for eps in (0., 16 / 255):
+                with self.subTest(heads=heads, eps=eps):
+                    adversarial, details = run_xshift_attack(
+                        adapter, classifier, image, label, label,
+                        classifier.zero_shot_weights.detach(),
+                        eps=eps, alpha=4 / 255, xshift_steps=3,
+                        xai_topk_ratio=0.1, xai_alpha=0.5, lambda_pred=1.,
+                        lambda_patch=0.3, lambda_ent=0.05, margin=0.05,
+                        token_encoder=encode_blip_tokens,
+                    )
+                    self.assertTrue(torch.isfinite(adversarial).all())
+                    self.assertLessEqual((adversarial - image).abs().max().item(), eps + 1e-6)
+                    self.assertGreaterEqual(adversarial.min().item(), 0)
+                    self.assertLessEqual(adversarial.max().item(), 1)
+                    self.assertEqual(details["selected_pred_label"], label)
+                    candidates = [(0., 0)] + [
+                        (entry["map_change"], entry["xshift_step"])
+                        for entry in details["trace"] if entry["class_preserved"]
+                    ]
+                    self.assertEqual(
+                        (details["selected_map_change"], details["selected_step"]),
+                        max(candidates),
+                    )
+                    if eps == 0:
+                        torch.testing.assert_close(adversarial, image)
+
     def test_all_explainers_finite_shape_and_preserve_attack_graph(self):
         adapter = self.make_adapter()
         with torch.no_grad():

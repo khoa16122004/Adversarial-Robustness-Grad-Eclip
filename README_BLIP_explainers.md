@@ -166,6 +166,13 @@ saliency, deletion/insertion causal curves, and noisy-linear ROAD (10% through
 Clean ROAD and attack ROAD use the same implementation in `road_score_BLIP.py`.
 No attack is performed.
 
+The shared causal runner updates pixels directly on the input tensor's device.
+Older code updated `start.cpu().numpy()`, which only modified a copy for CUDA
+inputs: clean curves could remain flat and yield zero IMD. Clean outputs produced
+with that code must be regenerated with `--overwrite`; changing the exporter
+cannot repair those saved curves. This pixel-update bug does not explain zero
+saliency maps or ROAD scores, which need separate diagnosis.
+
 Submit from the server repository root:
 
 ```bash
@@ -219,6 +226,51 @@ for Without Attack and pairs its saliency with attack maps to calculate SRC.
 For attack ROAD only, use
 `EPSILON=16 sbatch script_sh/road_blip.sh`; it writes ROAD JSON beside existing
 attack samples without regenerating attacks.
+
+To explicitly run ROAD on all causal attacks' **post-attack** maps:
+
+```bash
+EPSILON=16 sbatch script_sh/road_blip.sh --modes ins del del+ins --overwrite
+```
+
+All dataset folders are discovered under `BLIP_result` (including `ImageNet`,
+`StandfordPet`, and `cub`). IOA reads `adversarial_image_ins.png` with
+`ins_del_adv_<explainer>_saliency.npy`; DOA reads `adversarial_image_del.png`
+with `del_del_adv_<explainer>_saliency.npy`; joint reads
+`adversarial_image_del_ins.png` with `joint_del_adv_<explainer>_saliency.npy`.
+These maps are recomputed by the attack runner on the adversarial image, not
+clean maps. The `del` in the saliency filename denotes the deletion rerun, not
+the attack objective. ROAD uses noisy-linear MoRF at 10%..90%, matching the
+CLIP clean/transfer ROAD implementation, and records the exact input paths.
+It scores the adversarial predicted class, matching BLIP causal reruns.
+Each group logs its sample count; absent requested modes are explicitly warned.
+`--overwrite` regenerates existing ROAD JSON; it does not rerun PGD.
+
+## BLIP X-Shift (epsilon 16, all three datasets)
+
+```bash
+mkdir -p BLIP_faithfulness
+sbatch script_sh/xshift_blip_all.sh
+```
+
+`XShift_score_BLIP.py` reuses the CLIP X-Shift loss, projected sign update, and
+maximal-map-change class-preserving candidate selection (including clean step 0).
+BLIP normalized visual tokens are projected through `vision_proj` into the same
+embedding space as classifier text weights. Attention settings match the recorded
+attack configuration. One attack per image is evaluated with all five explainers.
+Outputs: `BLIP_result/<dataset>/eps_16/<explainer>/xshift/<sample>/`.
+The exporter recognizes the maps for SRC; the ROAD runner supports `mode=xshift`.
+
+X-Shift passes CPU image tensors to the causal rerun, so the former CUDA-only
+pixel-copy bug in clean evaluation does not apply to this path. A zero
+`selected_map_change` or selected clean candidate can still be legitimate if no
+updated candidate both preserves the class and improves map change; inspect
+`selected_step` and `xshift_trace` rather than assuming every zero is a bug.
+Complete outputs are skipped by default; use `--overwrite` only to regenerate:
+
+```bash
+sbatch script_sh/xshift_blip_all.sh --overwrite
+```
 
 ## Export a BLIP faithfulness LaTeX table (CPU only)
 
