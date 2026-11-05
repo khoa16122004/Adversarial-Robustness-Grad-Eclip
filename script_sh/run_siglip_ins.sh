@@ -1,8 +1,6 @@
 #!/bin/bash
 set -eo pipefail
 nvidia-smi -L
-source "${CONDA_SH:-/datastore/khangtd/miniconda3/etc/profile.d/conda.sh}"
-conda activate "${CONDA_ENV:-SigLIP}"
 repo_root="${REPO_ROOT:-/datastore/khangtd/Adversarial-Robustness-Grad-Eclip}"
 cd "$repo_root"
 
