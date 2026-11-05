@@ -200,12 +200,13 @@ This launcher reads existing `BLIP_result_rerun/<dataset>/eps_*/**/run_config.js
 to obtain each dataset's image directory, sample JSON, checkpoint, class names,
 and inference/explainer settings. It validates all three datasets before starting.
 Inconsistent attack configurations fail explicitly rather than mixing baselines.
-Outputs stay under each existing dataset folder's `clean/` directory, with
+Outputs are written under `BLIP_result_clean/<dataset>/clean/`, with
 saliency, insertion/deletion curves and summaries, and ROAD for all five methods.
 Clean baselines do not depend on epsilon, so they are generated only once.
-Default outputs are `BLIP_result_rerun/<dataset>/clean/<explainer>/<sample-id>/`.
+Default outputs are `BLIP_result_clean/<dataset>/clean/<explainer>/<sample-id>/`.
 Use `RESULT_ROOT=/path/to/results sbatch script_sh/clean_blip_all.sh` for an
-alternative result root, or `CHECKPOINT=/path/to/BLIP.pth` to relocate the same
+alternative configuration source, `OUTPUT_ROOT=/path/to/output` to change the
+output root, or `CHECKPOINT=/path/to/BLIP.pth` to relocate the same
 checkpoint. All recorded data/sample paths must still exist on the server.
 
 Use the **same checkpoint, last-heads setting, class names, sample IDs, and
@@ -263,8 +264,11 @@ The launcher reads existing causal attack configurations from
 `BLIP_result_rerun/<dataset>/eps_16/`; run the causal attack launchers first so
 each dataset has a `run_config.json`. No separate X-Shift attack is run per
 explainer, and no other epsilon is generated.
-Outputs: `BLIP_result_rerun/<dataset>/eps_16/<explainer>/xshift/<sample>/`.
-Override the input/output result root with `RESULT_ROOT=/path/to/results`.
+Outputs: `BLIP_result_clean/<dataset>/eps_16/<explainer>/xshift/<sample>/`.
+Override the configuration source with `RESULT_ROOT=/path/to/results` and
+the output root with `OUTPUT_ROOT=/path/to/output`. Both all-dataset launchers
+automatically create missing output directories, including dataset/method/sample
+subdirectories; the input configuration directories must already exist.
 The exporter recognizes the maps for SRC; the ROAD runner supports `mode=xshift`.
 
 X-Shift passes CPU image tensors to the causal rerun, so the former CUDA-only

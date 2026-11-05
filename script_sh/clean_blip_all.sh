@@ -19,7 +19,7 @@ export PYTHONUNBUFFERED=1
 export SSL_CERT_FILE="$(python -c 'import certifi; print(certifi.where())')"
 export REQUESTS_CA_BUNDLE="$SSL_CERT_FILE"
 
-python - "${RESULT_ROOT:-$PWD/BLIP_result_rerun}" "$@" <<'PY'
+python - "${RESULT_ROOT:-$PWD/BLIP_result_rerun}" "${OUTPUT_ROOT:-$PWD/BLIP_result_clean}" "$@" <<'PY'
 import json
 import os
 from pathlib import Path
@@ -29,6 +29,8 @@ import sys
 root = Path(sys.argv[1]).resolve()
 if not root.is_dir():
     raise FileNotFoundError(f"BLIP result root not found: {root}")
+output_root = Path(sys.argv[2]).resolve()
+output_root.mkdir(parents=True, exist_ok=True)
 
 datasets = (
     ("ImageNet", {"imagenet"}),
@@ -73,7 +75,7 @@ for display, aliases in datasets:
     command = [
         sys.executable, "clean_score_BLIP.py",
         "--dataset", folder.name,
-        "--output-root", str(root),
+        "--output-root", str(output_root),
         "--blip-root", str(Path("BLIP").resolve()),
         "--checkpoint", os.environ.get("CHECKPOINT") or reference["checkpoint"],
         "--device", "cuda", "--methods", *methods,
@@ -81,11 +83,11 @@ for display, aliases in datasets:
     for key in options:
         if reference.get(key) is not None:
             command.extend(["--" + key.replace("_", "-"), str(reference[key])])
-    command.extend(sys.argv[2:])
+    command.extend(sys.argv[3:])
     jobs.append(command)
 
 for command in jobs:
     print("RUN:", " ".join(command), flush=True)
     subprocess.run(command, check=True)
-print(f"Completed all clean BLIP datasets, five explainers each. Output: {root}", flush=True)
+print(f"Completed all clean BLIP datasets, five explainers each. Output: {output_root}", flush=True)
 PY

@@ -19,7 +19,7 @@ export PYTHONUNBUFFERED=1
 export SSL_CERT_FILE="$(python -c 'import certifi; print(certifi.where())')"
 export REQUESTS_CA_BUNDLE="$SSL_CERT_FILE"
 
-python - "${RESULT_ROOT:-$PWD/BLIP_result_rerun}" "$@" <<'PY'
+python - "${RESULT_ROOT:-$PWD/BLIP_result_rerun}" "${OUTPUT_ROOT:-$PWD/BLIP_result_clean}" "$@" <<'PY'
 import json
 import os
 from pathlib import Path
@@ -29,6 +29,8 @@ import sys
 root = Path(sys.argv[1]).resolve()
 if not root.is_dir():
     raise FileNotFoundError(f"BLIP result root not found: {root}")
+output_root = Path(sys.argv[2]).resolve()
+output_root.mkdir(parents=True, exist_ok=True)
 datasets = (
     ("ImageNet", {"imagenet"}),
     ("StandfordPet", {"stanfordpet", "stanfordpets", "standfordpet", "standfordpets"}),
@@ -68,18 +70,18 @@ for dataset, aliases in datasets:
     command = [
         sys.executable, "XShift_score_BLIP.py",
         "--run-config", str(reference_path),
-        "--output-dir", str(folder / "eps_16"),
+        "--output-dir", str(output_root / folder.name / "eps_16"),
         "--blip-root", str(Path("BLIP").resolve()),
         "--device", "cuda", "--eps", "16", "--alpha", "4", "--xshift-steps", "50",
         "--methods", "eclip", "game", "gradcam", "maskclip", "rise",
     ]
     if os.environ.get("CHECKPOINT"):
         command.extend(["--checkpoint", os.environ["CHECKPOINT"]])
-    command.extend(sys.argv[2:])
+    command.extend(sys.argv[3:])
     jobs.append(command)
 
 for command in jobs:
     print("RUN:", " ".join(command), flush=True)
     subprocess.run(command, check=True)
-print(f"Completed BLIP X-Shift eps=16 for all three datasets: {root}", flush=True)
+print(f"Completed BLIP X-Shift eps=16 for all three datasets: {output_root}", flush=True)
 PY
