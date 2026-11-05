@@ -347,7 +347,7 @@ def main():
     )
     parser.add_argument(
         "--clean-root", type=Path,
-        help="Optional separate clean root: <dataset>/clean/<explainer>/<sample>/saliency/*.npy",
+        help="Clean results root; with --clean-only, read all metrics here instead of --input-root",
     )
     parser.add_argument("--output-tex", type=Path)
     args = parser.parse_args()
@@ -357,7 +357,8 @@ def main():
     if not epsilon.isdigit():
         parser.error("--epsilon must be a nonnegative integer (optionally prefixed eps_)")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    root = args.input_root.expanduser().resolve()
+    input_root = args.clean_root if args.clean_only and args.clean_root else args.input_root
+    root = input_root.expanduser().resolve()
     if not root.is_dir():
         raise FileNotFoundError(f"Input root is not a directory: {root}")
     clean_root = args.clean_root.expanduser().resolve() if args.clean_root else None

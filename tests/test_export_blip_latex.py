@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -45,6 +46,19 @@ class ExportBLIPLatexTests(unittest.TestCase):
             )
             self.assertIn("GradECLIP & Without Attack & 0.0000 & -- & 0.6250", table)
             self.assertEqual(table.count("Without Attack"), 5)
+
+            for epsilon_args in ([], ["--epsilon", "16"]):
+                with patch("sys.argv", [
+                    "export_blip_latex.py", "--clean-only",
+                    "--clean-root", str(root),
+                    "--input-root", str(root / "nonexistent_BLIP_result"),
+                    *epsilon_args,
+                ]):
+                    exporter.main()
+                self.assertEqual(
+                    (root / "blip_clean_faithfulness.tex").read_text(encoding="utf-8"),
+                    table,
+                )
 
     def test_spearman_from_clean_and_attack_maps(self):
         with tempfile.TemporaryDirectory() as directory:
