@@ -1,8 +1,7 @@
 #!/bin/bash
 set -eo pipefail
 nvidia-smi -L
-repo_root="${REPO_ROOT:-/datastore/khangtd/Adversarial-Robustness-Grad-Eclip}"
-cd "$repo_root"
+repo_root="$PWD"
 
 output_root="${OUTPUT_DIR:-$repo_root/SIGLIP_result_rerun}"
 mode="${SIGLIP_MODE:-ins}"
