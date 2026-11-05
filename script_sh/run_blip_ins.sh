@@ -25,20 +25,24 @@ case "$mode" in
   ins|del|del+ins) ;;
   *) printf 'Unsupported BLIP_MODE: %s\n' "$mode" >&2; exit 1 ;;
 esac
-datasets=(ImageNet StandfordPet cub)
+datasets=(
+  # ImageNet
+  # StandfordPet
+  cub
+)
 img_dirs=(
-  "${IMAGENET_IMG_DIR:-/datastore/quanphm/datasets/ImageNet/val}"
-  "${PET_IMG_DIR:-$repo_root/StandfordPet_Dataset}"
+  # "${IMAGENET_IMG_DIR:-/datastore/quanphm/datasets/ImageNet/val}"
+  # "${PET_IMG_DIR:-$repo_root/StandfordPet_Dataset}"
   "${CUB_IMG_DIR:-$repo_root/cub_dataset}"
 )
 sample_paths=(
-  "${IMAGENET_SAMPLE_PATH:-$repo_root/classification_reuslt/imagenet/blip_100.json}"
-  "${PET_SAMPLE_PATH:-$repo_root/classification_reuslt/pet/blip_100.json}"
+  # "${IMAGENET_SAMPLE_PATH:-$repo_root/classification_reuslt/imagenet/blip_100.json}"
+  # "${PET_SAMPLE_PATH:-$repo_root/classification_reuslt/pet/blip_100.json}"
   "${CUB_SAMPLE_PATH:-$repo_root/classification_reuslt/cub/blip_100.json}"
 )
 classnames_paths=(
-  "${IMAGENET_CLASSNAMES_PATH:-$repo_root/imgnet1k_label.json}"
-  "${PET_CLASSNAMES_PATH:-$repo_root/pet.json}"
+  # "${IMAGENET_CLASSNAMES_PATH:-$repo_root/imgnet1k_label.json}"
+  # "${PET_CLASSNAMES_PATH:-$repo_root/pet.json}"
   "${CUB_CLASSNAMES_PATH:-$repo_root/cub.json}"
 )
 process_batch_size="${PROCESS_BATCH_SIZE:-32}"
@@ -98,4 +102,4 @@ for index in "${!datasets[@]}"; do
   done
 done
 
-printf '\nBLIP mode=%s complete for three datasets. Results: %s\n' "$mode" "$output_root"
+printf '\nBLIP mode=%s complete for datasets: %s. Results: %s\n' "$mode" "${datasets[*]}" "$output_root"
