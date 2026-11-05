@@ -196,14 +196,15 @@ mkdir -p BLIP_faithfulness
 sbatch script_sh/clean_blip_all.sh
 ```
 
-This launcher reads existing `BLIP_result/<dataset>/eps_*/**/run_config.json`
+This launcher reads existing `BLIP_result_rerun/<dataset>/eps_*/**/run_config.json`
 to obtain each dataset's image directory, sample JSON, checkpoint, class names,
 and inference/explainer settings. It validates all three datasets before starting.
 Inconsistent attack configurations fail explicitly rather than mixing baselines.
 Outputs stay under each existing dataset folder's `clean/` directory, with
 saliency, insertion/deletion curves and summaries, and ROAD for all five methods.
 Clean baselines do not depend on epsilon, so they are generated only once.
-Use `RESULT_ROOT=/path/to/BLIP_reuslt sbatch script_sh/clean_blip_all.sh` for an
+Default outputs are `BLIP_result_rerun/<dataset>/clean/<explainer>/<sample-id>/`.
+Use `RESULT_ROOT=/path/to/results sbatch script_sh/clean_blip_all.sh` for an
 alternative result root, or `CHECKPOINT=/path/to/BLIP.pth` to relocate the same
 checkpoint. All recorded data/sample paths must still exist on the server.
 
@@ -258,7 +259,12 @@ maximal-map-change class-preserving candidate selection (including clean step 0)
 BLIP normalized visual tokens are projected through `vision_proj` into the same
 embedding space as classifier text weights. Attention settings match the recorded
 attack configuration. One attack per image is evaluated with all five explainers.
-Outputs: `BLIP_result/<dataset>/eps_16/<explainer>/xshift/<sample>/`.
+The launcher reads existing causal attack configurations from
+`BLIP_result_rerun/<dataset>/eps_16/`; run the causal attack launchers first so
+each dataset has a `run_config.json`. No separate X-Shift attack is run per
+explainer, and no other epsilon is generated.
+Outputs: `BLIP_result_rerun/<dataset>/eps_16/<explainer>/xshift/<sample>/`.
+Override the input/output result root with `RESULT_ROOT=/path/to/results`.
 The exporter recognizes the maps for SRC; the ROAD runner supports `mode=xshift`.
 
 X-Shift passes CPU image tensors to the causal rerun, so the former CUDA-only
