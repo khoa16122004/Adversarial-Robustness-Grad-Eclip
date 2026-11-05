@@ -237,9 +237,9 @@ class AdversarialCausalMetric(CausalMetric):
             'adv_prob': [],
             'pgd_trace': [],
         }
-        best_x_raw_adv = None
-        best_loss = None
-        best_step = None
+        # best_x_raw_adv = None
+        # best_loss = None
+        # best_step = None
 
         if deletion_batch_size is not None:
             process_batch_size = deletion_batch_size
@@ -322,11 +322,10 @@ class AdversarialCausalMetric(CausalMetric):
             step_loss = float(loss.item())
             step_pred_label = int(torch.argmax(adv_logits, dim=1).item())
             class_preserved = step_pred_label == target_class
-            if class_preserved and (best_loss is None or step_loss < best_loss):
-            # if (best_loss is None or step_loss < best_loss):
-                best_loss = step_loss
-                best_x_raw_adv = x_raw_adv.detach().clone()
-                best_step = k + 1
+            # if class_preserved and (best_loss is None or step_loss < best_loss):
+            #     best_loss = step_loss
+            #     best_x_raw_adv = x_raw_adv.detach().clone()
+            #     best_step = k + 1
             
             if delta.grad is not None:
                 delta.grad.zero_()
@@ -355,24 +354,19 @@ class AdversarialCausalMetric(CausalMetric):
                     details['loss'][-1]
                 ))
 
-        if best_x_raw_adv is None:
-            x_raw_adv = torch.clamp(x_raw + delta.detach(), clip_min, clip_max)
-            selected_step = pgd_steps
-            selected_class_preserved = False
-        else:
-            x_raw_adv = best_x_raw_adv
-            selected_step = best_step
-            selected_class_preserved = True
-
-        details['selected_step'] = int(selected_step)
-        details['selected_class_preserved'] = bool(selected_class_preserved)
-        details['selection_fallback_last_step'] = bool(best_x_raw_adv is None)
-        details['selected_loss'] = float(
-            best_loss
-            if best_loss is not None
-            else details['loss'][-1]
-        )
-        details['adv_prob'] = float(self.model(normalize_ImageNet1k(x_raw_adv))[0, target_class].item())
+        # if best_x_raw_adv is not None:
+        #     x_raw_adv = best_x_raw_adv
+        #     selected_step = best_step
+        x_raw_adv = torch.clamp(x_raw + delta.detach(), clip_min, clip_max)
+        with torch.no_grad():
+            final_logits = self.model(normalize_ImageNet1k(x_raw_adv))
+        details['selected_step'] = int(pgd_steps)
+        details['selected_class_preserved'] = bool(final_logits.argmax(dim=1).item() == target_class)
+        details['selection_fallback_last_step'] = False
+        details['selection_strategy'] = 'last_step'
+        # Loss trace is evaluated before each PGD update, not on the returned image.
+        details['selected_loss'] = None
+        details['adv_prob'] = float(final_logits[0, target_class].item())
 
         if return_details:
             return x_raw_adv, details
@@ -511,9 +505,9 @@ class JointAdversarialCausalMetric(nn.Module):
             "adv_prob": [],
             "pgd_trace": [],
         }
-        best_x_raw_adv = None
-        best_loss = None
-        best_step = None
+        # best_x_raw_adv = None
+        # best_loss = None
+        # best_step = None
 
         for k in range(pgd_steps):
             x_raw_adv = torch.clamp(x_raw + delta, clip_min, clip_max)
@@ -595,10 +589,10 @@ class JointAdversarialCausalMetric(nn.Module):
             step_loss = float(l_del_val - l_ins_val - 2.0 * l_preserve.item())
             step_pred_label = int(torch.argmax(adv_logits, dim=1).item())
             class_preserved = step_pred_label == target_class
-            if class_preserved and (best_loss is None or step_loss < best_loss):
-                best_loss = step_loss
-                best_x_raw_adv = x_raw_adv.detach().clone()
-                best_step = k + 1
+            # if class_preserved and (best_loss is None or step_loss < best_loss):
+            #     best_loss = step_loss
+            #     best_x_raw_adv = x_raw_adv.detach().clone()
+            #     best_step = k + 1
 
             if delta.grad is not None:
                 delta.grad.zero_()
@@ -641,24 +635,19 @@ class JointAdversarialCausalMetric(nn.Module):
                     )
                 )
 
-        if best_x_raw_adv is None:
-            x_raw_adv = torch.clamp(x_raw + delta.detach(), clip_min, clip_max)
-            selected_step = pgd_steps
-            selected_class_preserved = False
-        else:
-            x_raw_adv = best_x_raw_adv
-            selected_step = best_step
-            selected_class_preserved = True
-
-        details["selected_step"] = int(selected_step)
-        details["selected_class_preserved"] = bool(selected_class_preserved)
-        details["selection_fallback_last_step"] = bool(best_x_raw_adv is None)
-        details["selected_loss"] = float(
-            best_loss
-            if best_loss is not None
-            else details["loss"][-1]
-        )
-        details["adv_prob"] = float(self.model(normalize_ImageNet1k(x_raw_adv))[0, target_class].item())
+        # if best_x_raw_adv is not None:
+        #     x_raw_adv = best_x_raw_adv
+        #     selected_step = best_step
+        x_raw_adv = torch.clamp(x_raw + delta.detach(), clip_min, clip_max)
+        with torch.no_grad():
+            final_logits = self.model(normalize_ImageNet1k(x_raw_adv))
+        details["selected_step"] = int(pgd_steps)
+        details["selected_class_preserved"] = bool(final_logits.argmax(dim=1).item() == target_class)
+        details["selection_fallback_last_step"] = False
+        details["selection_strategy"] = "last_step"
+        # Loss trace is evaluated before each PGD update, not on the returned image.
+        details["selected_loss"] = None
+        details["adv_prob"] = float(final_logits[0, target_class].item())
 
         if return_details:
             return x_raw_adv, details

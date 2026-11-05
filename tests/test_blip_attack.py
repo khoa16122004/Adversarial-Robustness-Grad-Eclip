@@ -252,6 +252,13 @@ class BLIPAttackTests(unittest.TestCase):
                     self.assertTrue((folder / filename).is_file())
                     payload = json.loads((folder / "curve_information.json").read_text())
                     self.assertEqual(payload["attack_mode"], mode)
+                    self.assertEqual(payload["selected_step"], args.pgd_steps)
+                    self.assertFalse(payload["selection_fallback_last_step"])
+                    self.assertIsNone(payload["selected_loss"])
+                    self.assertEqual(
+                        payload["selected_class_preserved"],
+                        payload["adv_pred_label"] == payload["retain_class_label"],
+                    )
                     self.assertEqual(len(payload["pgd_trace"]), 2)
                     self.assertIn("clean_prob", payload)
                     self.assertIn("adv_prob", payload)
