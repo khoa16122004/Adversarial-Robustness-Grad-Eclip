@@ -24,7 +24,7 @@ def build_parser():
     parser.add_argument("--device", default=None)
     parser.add_argument("--output-dir", default="fixed_mask_eval_outputs")
     parser.add_argument("--img-dir", default="imagenetval_1k")
-    parser.add_argument("--sample-path", default="vit_b_16_100.json")
+    parser.add_argument("--sample-path", default="classification_reuslt/imagenet/vit_b_16_100.json")
     parser.add_argument("--classnames-path", default='imgnet1k_label.json')
     parser.add_argument("--prompt-template", default="a photo of {}")
     parser.add_argument("--save-process", action="store_true")

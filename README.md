@@ -79,6 +79,9 @@ python adv_score_CLIP_fixed_masked.py --mask-source clean --mode del+ins --img-d
 python adv_score_CLIP_fixed_masked.py --mask-source random --seed 7 --mode del --img-dir images --sample-path samples.json --output-dir outputs_fixed
 python run_different_masking_strategies_CLIP.py --mask-sources clean random --seeds 7 42 --mode del+ins --img-dir images --sample-path samples.json --output-dir outputs_fixed
 bash script_sh/adv_score_CLIP_fixed_masked.sh --mask-source random --seed 7 --img-dir images --sample-path samples.json
+bash script_sh/run_clip_fixed_masked_ins.sh --mask-source clean --img-dir images --sample-path samples.json
+bash script_sh/run_clip_fixed_masked_del.sh --mask-source random --seed 7 --img-dir images --sample-path samples.json
+bash script_sh/run_clip_fixed_masked_joint.sh --mask-source clean --img-dir images --sample-path samples.json
 ```
 
 The multi-strategy runner forwards other CLI options to the fixed-mask runner
@@ -89,6 +92,10 @@ fresh adversarial saliency outputs, summaries, and `curve_information.json`
 with `mask_source`, `seed`, `evaluation_map_source`, loss traces and AUCs.
 The shell launcher also supports `PYTHON`, `MASK_SOURCE`, `SEED`, and `MODE`
 environment variables; explicit CLI arguments override its defaults.
+The three `run_clip_fixed_masked_{ins,del,joint}.sh` launchers reuse this shell
+launcher and pin their respective modes (`ins`, `del`, `del+ins`), regardless
+of `MODE` or a forwarded `--mode`. Other options, including mask source,
+seed, input paths and output directory, are forwarded unchanged.
 
 ```powershell
 python .\main_script\ROAD_evaluate_and_export.py \
