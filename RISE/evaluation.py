@@ -59,7 +59,11 @@ class CausalMetric():
         Return:
             scores (nd.array): Array containing scores at every step.
         """
-        pred = self.model(img_tensor.cuda())
+        try:
+            device = next(self.model.parameters()).device
+        except StopIteration:
+            device = img_tensor.device
+        pred = self.model(img_tensor.to(device))
         top, c = torch.max(pred, 1)
         c = c.cpu().numpy()[0]
         n_steps = (HW + self.step - 1) // self.step
@@ -80,7 +84,7 @@ class CausalMetric():
         # Coordinates of pixels in order of decreasing saliency
         salient_order = np.flip(np.argsort(explanation.reshape(-1, HW), axis=1), axis=-1)
         for i in range(n_steps+1):
-            pred = self.model(start.cuda())
+            pred = self.model(start.to(device))
             pr, cl = torch.topk(pred, 2)
             if verbose == 2:
                 print('{}: {:.3f}'.format(get_class_name(cl[0][0]), float(pr[0][0])))
@@ -371,11 +375,246 @@ class AdversarialCausalMetric(CausalMetric):
         if return_details:
             return x_raw_adv, details
         return x_raw_adv
+    
+    
+def _build_fixed_salient_order(metric, img_raw, explanation_fn, mask_source, seed):
+    if mask_source not in ("clean", "random"):
+        raise ValueError("mask_source must be 'clean' or 'random'")
+    if img_raw.ndim != 4 or img_raw.shape[:2] != (1, 3) or img_raw.shape[-2] * img_raw.shape[-1] != HW:
+        raise ValueError("Fixed-mask attacks expect one RGB image with 224 * 224 pixels.")
+    if metric.step < 1:
+        raise ValueError("step must be positive")
+    if mask_source == "random":
+        if not isinstance(seed, int) or seed < 0:
+            raise ValueError("Random fixed masks require a non-negative integer seed.")
+        return np.random.default_rng(seed).permutation(HW).reshape(1, HW)
+
+    try:
+        device = next(metric.model.parameters()).device
+    except StopIteration:
+        device = img_raw.device
+    # Clean explainers may need gradients; detach the result, not the explanation call.
+    saliency = explanation_fn(
+        metric.raw_model,
+        metric.hm_type,
+        normalize_ImageNet1k(img_raw.detach().to(device)),
+        metric.txt_embedding,
+        metric.txts,
+        metric.resize,
+        metric.preprocess,
+    )
+    if isinstance(saliency, torch.Tensor):
+        saliency = saliency.detach().cpu().numpy()
+    saliency = np.asarray(saliency)
+    if saliency.size != HW or not np.isfinite(saliency).all():
+        raise ValueError("Clean saliency must contain one finite value per image pixel.")
+    return np.flip(np.argsort(saliency.reshape(1, HW), axis=1), axis=-1).copy()
+
+
+class AdversarialCausalMetricFixedMask(CausalMetric):
+    """Single del/ins PGD attack with a clean or seeded-random ranking frozen per run."""
+    def __init__(self, model, raw_model, mode, step, substrate_fn, hm_type, txt_embedding, txts, resize, preprocess):
+        super().__init__(model, mode, step, substrate_fn)
+        self.hm_type = hm_type
+        self.txt_embedding = txt_embedding
+        self.txts = txts
+        self.resize = resize
+        self.preprocess = preprocess
+        self.raw_model = raw_model
+        
+    def single_run(self,
+                   img_raw, # unnormalized image
+                   explanation_fn,
+                   target_class=None,
+                   eps=32.0 / 255.0,
+                   alpha=4.0 / 255.0,
+                   pgd_steps=100,
+                   deletion_steps=100,
+                   process_batch_size=32,
+                   deletion_batch_size=None,
+                   clip_min=0.0,
+                   clip_max=1.0,
+                   return_details=True,
+                   verbose=0,
+                   mask_source="clean",
+                   seed=0):
+        r"""PGD attack with a fixed clean or random pixel ranking.
+
+        Args:
+            img_raw (Tensor): unnormalized input image tensor with shape (1, C, H, W).
+            explanation_fn (callable): function G that returns saliency for a given image.
+            target_class (int, optional): class index c. If None, use model top-1 on clean image.
+            eps (float): L_inf perturbation budget.
+            alpha (float): PGD step size.
+            pgd_steps (int): number of PGD iterations.
+            deletion_steps (int): number of deletion iterations T.
+            process_batch_size (int): number of process states evaluated per forward pass for both del/ins modes.
+            deletion_batch_size (int, optional): deprecated alias of process_batch_size.
+            mask_source (str): 'clean' saliency ranking or 'random' pixel permutation.
+            seed (int): local RNG seed for random ranking; unused for clean ranking.
+            clip_min (float): minimum value for clamped normalized image.
+            clip_max (float): maximum value for clamped normalized image.
+            return_details (bool): whether to return optimization logs.
+            verbose (int): if > 0, prints attack progress.
+
+        Returns:
+            Tensor or (Tensor, dict): adversarial image x_adv, and optional details.
+        """
+        salient_order = _build_fixed_salient_order(
+            self, img_raw, explanation_fn, mask_source, seed
+        )
+        self.fixed_salient_order = salient_order
+
+        try:
+            device = next(self.model.parameters()).device
+        except StopIteration:
+            device = img_raw.device
+
+        x_raw = img_raw.detach().to(device) # unnormalized image
+        with torch.no_grad():
+            clean_logits = self.model(normalize_ImageNet1k(x_raw))
+            if target_class is None:
+                target_class = int(torch.argmax(clean_logits, dim=1).item())
+        
+        # clean_prob = clean_logits[0, target_class].item()
+
+        delta = torch.zeros_like(x_raw, requires_grad=True)
+        deletion_steps = (HW + self.step - 1) // self.step
+        deletion_steps = int(max(1, deletion_steps))
+        details = {
+            'loss': [],
+            'clean_prob': float(clean_logits[0, target_class].item()),
+            'adv_prob': [],
+            'pgd_trace': [],
+        }
+        # best_x_raw_adv = None
+        # best_loss = None
+        # best_step = None
+
+        if deletion_batch_size is not None:
+            process_batch_size = deletion_batch_size
+
+        details["mask_source"] = mask_source
+        details["seed"] = seed if mask_source == "random" else None
+        
+        for k in range(pgd_steps):
+            x_raw_adv = torch.clamp(x_raw + delta, clip_min, clip_max)
+            x_adv_normalzie = normalize_ImageNet1k(x_raw_adv)
+            adv_logits = self.model(x_adv_normalzie)
+            l_preserve = F.kl_div(
+                adv_logits,
+                clean_logits,
+                reduction='batchmean',
+            )
+            if self.mode == 'del':
+                xt = x_raw_adv
+                finish = self.substrate_fn(x_raw_adv)
+            elif self.mode == 'ins':
+                xt = self.substrate_fn(x_raw_adv)
+                finish = x_raw_adv
+            else:
+                raise ValueError("mode must be 'del' or 'ins'")
+            finish_flat = finish.view(1, 3, HW)
+            xt_states = []
+
+
+            for t in range(deletion_steps):
+                xt_states.append(xt.clone())
+
+                start_idx = self.step * t
+                end_idx = min(HW, self.step * (t + 1))
+                if start_idx >= HW:
+                    break
+
+                coords = torch.as_tensor(
+                    salient_order[0, start_idx:end_idx],
+                    device=device,
+                    dtype=torch.long
+                )
+
+                xt_next = xt.clone()
+                xt_next_flat = xt_next.view(1, 3, HW)
+                xt_next_flat[0, :, coords] = finish_flat[0, :, coords]
+                xt = xt_next
+
+            if process_batch_size is None or process_batch_size < 1:
+                process_batch_size = len(xt_states)
+
+            l_del = torch.zeros(1, device=device)
+            p_t_trace = []
+            for start_idx in range(0, len(xt_states), process_batch_size):
+                end_idx = min(len(xt_states), start_idx + process_batch_size)
+                xt_batch = torch.cat(xt_states[start_idx:end_idx], dim=0)
+                logits_batch = self.model(normalize_ImageNet1k(xt_batch))
+                p_t_batch = logits_batch[:, target_class]
+                l_del = l_del + p_t_batch.sum() # aggregation
+                p_t_trace.extend([float(v) for v in p_t_batch.detach().cpu().tolist()])
+
+            logits_last = self.model(normalize_ImageNet1k(xt)) # last logitss
+            l_del += logits_last[:, target_class]
+            l_del = l_del / deletion_steps # average deletion loss
+            if self.mode == 'del':
+                loss = l_del - l_preserve
+            elif self.mode == 'ins':
+                loss = l_del + l_preserve
+
+            step_loss = float(loss.item())
+            step_pred_label = int(torch.argmax(adv_logits, dim=1).item())
+            class_preserved = step_pred_label == target_class
+            # if class_preserved and (best_loss is None or step_loss < best_loss):
+            #     best_loss = step_loss
+            #     best_x_raw_adv = x_raw_adv.detach().clone()
+            #     best_step = k + 1
+            
+            if delta.grad is not None:
+                delta.grad.zero_()
+            loss.backward()
+
+            with torch.no_grad():
+                if self.mode == 'del':
+                    delta += alpha * delta.grad.sign()
+                else:
+                    delta -= alpha * delta.grad.sign()
+                delta.clamp_(-eps, eps)
+            delta = delta.detach().requires_grad_(True)
+
+            details['loss'].append(step_loss)
+            details['pgd_trace'].append({
+                'pgd_step': k + 1,
+                'loss': step_loss,
+                'class_preserved': bool(class_preserved),
+                'p_t': p_t_trace,
+            })
+
+            if verbose:
+                print('PGD {}/{} | L={:.6f}'.format(
+                    k + 1,
+                    pgd_steps,
+                    details['loss'][-1]
+                ))
+
+        # if best_x_raw_adv is not None:
+        #     x_raw_adv = best_x_raw_adv
+        #     selected_step = best_step
+        x_raw_adv = torch.clamp(x_raw + delta.detach(), clip_min, clip_max)
+        with torch.no_grad():
+            final_logits = self.model(normalize_ImageNet1k(x_raw_adv))
+        details['selected_step'] = int(pgd_steps)
+        details['selected_class_preserved'] = bool(final_logits.argmax(dim=1).item() == target_class)
+        details['selection_fallback_last_step'] = False
+        details['selection_strategy'] = 'last_step'
+        # Loss trace is evaluated before each PGD update, not on the returned image.
+        details['selected_loss'] = None
+        details['adv_prob'] = float(final_logits[0, target_class].item())
+
+        if return_details:
+            return x_raw_adv, details
+        return x_raw_adv
 
 
 class JointAdversarialCausalMetric(nn.Module):
-    """Optimize deletion and insertion adversarial objectives jointly."""
-
+    """Joint deletion/insertion PGD with saliency recomputed at each iteration."""
+    
     def __init__(
         self,
         model,
@@ -400,6 +639,20 @@ class JointAdversarialCausalMetric(nn.Module):
         self.txts = txts
         self.resize = resize
         self.preprocess = preprocess
+
+    def _get_salient_order(self, x_adv_normalized, explanation_fn):
+        saliency = explanation_fn(
+            self.raw_model,
+            self.hm_type,
+            x_adv_normalized,
+            self.txt_embedding,
+            self.txts,
+            self.resize,
+            self.preprocess,
+        )
+        if isinstance(saliency, torch.Tensor):
+            saliency = saliency.detach().cpu().numpy()
+        return np.flip(np.argsort(np.asarray(saliency).reshape(-1, HW), axis=1), axis=-1).copy()
 
     def _build_states(self, x_raw_adv, salient_order, run_mode, deletion_steps, device):
         if run_mode == "del":
@@ -515,19 +768,7 @@ class JointAdversarialCausalMetric(nn.Module):
             adv_logits = self.model(x_adv_normalized)
             l_preserve = F.kl_div(adv_logits, clean_logits, reduction="batchmean")
 
-            saliency = explanation_fn(
-                self.raw_model,
-                self.hm_type,
-                x_adv_normalized,
-                self.txt_embedding,
-                self.txts,
-                self.resize,
-                self.preprocess,
-            )
-            if isinstance(saliency, torch.Tensor):
-                saliency = saliency.detach().cpu().numpy()
-            saliency = np.asarray(saliency)
-            salient_order = np.flip(np.argsort(saliency.reshape(-1, HW), axis=1), axis=-1).copy()
+            salient_order = self._get_salient_order(x_adv_normalized, explanation_fn)
 
             # Chunked backward through the path losses; the model graphs are freed per chunk.
             x_leaf = x_raw_adv.detach().requires_grad_(True)
@@ -652,3 +893,53 @@ class JointAdversarialCausalMetric(nn.Module):
         if return_details:
             return x_raw_adv, details
         return x_raw_adv
+
+
+class JointAdversarialCausalMetricFixedMask(JointAdversarialCausalMetric):
+    """Joint del/ins attack sharing one frozen ranking across both paths and all PGD steps."""
+
+    def _get_salient_order(self, x_adv_normalized, explanation_fn):
+        return self.fixed_salient_order
+
+    def single_run(
+        self,
+        img_raw,
+        explanation_fn,
+        target_class=None,
+        eps=32.0 / 255.0,
+        alpha=4.0 / 255.0,
+        pgd_steps=100,
+        deletion_steps=100,
+        process_batch_size=32,
+        deletion_batch_size=None,
+        clip_min=0.0,
+        clip_max=1.0,
+        return_details=True,
+        verbose=0,
+        mask_source="clean",
+        seed=0,
+    ):
+        self.fixed_salient_order = _build_fixed_salient_order(
+            self, img_raw, explanation_fn, mask_source, seed
+        )
+        result = super().single_run(
+            img_raw,
+            explanation_fn,
+            target_class=target_class,
+            eps=eps,
+            alpha=alpha,
+            pgd_steps=pgd_steps,
+            deletion_steps=deletion_steps,
+            process_batch_size=process_batch_size,
+            deletion_batch_size=deletion_batch_size,
+            clip_min=clip_min,
+            clip_max=clip_max,
+            return_details=return_details,
+            verbose=verbose,
+        )
+        if return_details:
+            x_adv, details = result
+            details["mask_source"] = mask_source
+            details["seed"] = seed if mask_source == "random" else None
+            return x_adv, details
+        return result

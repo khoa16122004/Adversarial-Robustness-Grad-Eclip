@@ -59,6 +59,37 @@ foreach ($hm in @("eclip","game","gradcam","maskclip","rise")) {
 
 ## 3) Run ROAD evaluation
 
+### Fixed-mask CLIP attacks
+
+`adv_score_CLIP_fixed_masked.py` uses `AdversarialCausalMetricFixedMask` for
+`del`/`ins` and `JointAdversarialCausalMetricFixedMask` for `del+ins`.
+`--mask-source clean` computes saliency once on the clean image.
+`--mask-source random --seed 7` samples a random pixel permutation once with a
+local RNG. The same cumulative masks are reused throughout PGD; image and
+substrate values still come from the current adversarial image. Joint attacks
+share the same ranking for deletion and insertion.
+
+After optimization, saliency is recomputed on the adversarial image and the
+usual deletion/insertion evaluation runs on that **new map**, not the fixed
+attack masks. Existing dynamic-mask runners are unchanged. Fixed-mask attacks
+currently require RGB inputs with 224 * 224 pixels, as do the existing metrics.
+
+```bash
+python adv_score_CLIP_fixed_masked.py --mask-source clean --mode del+ins --img-dir images --sample-path samples.json --output-dir outputs_fixed
+python adv_score_CLIP_fixed_masked.py --mask-source random --seed 7 --mode del --img-dir images --sample-path samples.json --output-dir outputs_fixed
+python run_different_masking_strategies_CLIP.py --mask-sources clean random --seeds 7 42 --mode del+ins --img-dir images --sample-path samples.json --output-dir outputs_fixed
+bash script_sh/adv_score_CLIP_fixed_masked.sh --mask-source random --seed 7 --img-dir images --sample-path samples.json
+```
+
+The multi-strategy runner forwards other CLI options to the fixed-mask runner
+and starts an isolated process for each strategy/seed. Output is separated as
+`<output-dir>/<clean|random_seed_N>/<hm-type>/<mode>/<sample>/`.
+Each sample includes `fixed_salient_order.npy`, the adversarial image,
+fresh adversarial saliency outputs, summaries, and `curve_information.json`
+with `mask_source`, `seed`, `evaluation_map_source`, loss traces and AUCs.
+The shell launcher also supports `PYTHON`, `MASK_SOURCE`, `SEED`, and `MODE`
+environment variables; explicit CLI arguments override its defaults.
+
 ```powershell
 python .\main_script\ROAD_evaluate_and_export.py \
   --root-dir .\outputs\result_16 \
