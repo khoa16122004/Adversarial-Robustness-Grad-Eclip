@@ -17,7 +17,7 @@ from tqdm import tqdm
 from adv_score_BLIP import _write_json_atomic
 from blip_attack_adapter import BLIPAttackAdapter, HM_METHODS, build_zero_shot_blip_classifier
 from RISE.evaluation import CausalMetric, auc
-from road_score_BLIP import evaluate as evaluate_road
+from road_evaluation.deletion_metrics import METRIC_FILES, evaluate_both
 from util import (
     DEFAULT_PROMPT_TEMPLATE, build_blur_substrate, build_causal_metric_model,
     load_classnames, predict_zero_shot_clip, save_causal_metric_summary,
@@ -118,6 +118,7 @@ def main():
             required = (
                 "curve_information.json", "insertion_information.json",
                 "deletion_information.json", "road_deletion_information.json",
+                "del_avg_channel_information.json",
                 "clean_image_resized.png", f"saliency/{method}_saliency.npy",
                 "ins_summary.png", "del_summary.png",
             )
@@ -157,10 +158,12 @@ def main():
                     scores=curve, output_path=str(folder / f"{mode}_summary.png"),
                     mode=mode, class_name=classnames[label], preprocess=adapter.preprocess,
                 )
-            road = evaluate_road(model, to_tensor(image), saliency.squeeze(), label, device, args.road_noise, args.seed)
-            road.update(model="BLIP_ITC", metric="road_deletion", target_label=label,
-                        checkpoint=str(args.checkpoint.resolve()), last_heads=args.last_heads)
-            _write_json_atomic(folder / "road_deletion_information.json", road)
+            metrics = evaluate_both(model, to_tensor(image), saliency.squeeze(), label,
+                                    device, args.road_noise, args.seed)
+            for name, result in metrics.items():
+                result.update(model="BLIP_ITC", target_label=label, map_source="clean",
+                              checkpoint=str(args.checkpoint.resolve()), last_heads=args.last_heads)
+                _write_json_atomic(folder / METRIC_FILES[name], result)
             _write_json_atomic(folder / "curve_information.json", {
                 "model": "BLIP_ITC", "attack_mode": "clean",
                 "pred_label": label, "pred_classname": classnames[label],

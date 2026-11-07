@@ -1,4 +1,4 @@
-"""Evaluate ROAD on existing BLIP attack images and saliency maps."""
+"""Evaluate ROAD and DEL_avg_channel on existing BLIP attack artifacts."""
 
 import argparse
 import json
@@ -14,9 +14,9 @@ from PIL import Image
 from torchvision.transforms.functional import to_tensor
 
 from blip_attack_adapter import BLIPAttackAdapter, build_zero_shot_blip_classifier
+from road_evaluation.deletion_metrics import METRIC_FILES, evaluate_both, evaluate_deletion
 from road_evaluation.road.imputations import NoisyLinearImputer
-from road_evaluation.road.imputed_dataset import ImputedDataset
-from util import build_causal_metric_model, load_classnames, normalize_ImageNet1k
+from util import build_causal_metric_model, load_classnames
 
 
 def attack_artifacts(sample_dir, mode, method):
@@ -34,48 +34,9 @@ def attack_artifacts(sample_dir, mode, method):
 
 
 def evaluate(model, image, saliency, label, device, noise, seed):
-    percentages = np.arange(1, 10, dtype=np.float64) / 10
-    generator_state = np.random.get_state()
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    curve = []
-    accuracy = []
-    try:
-        for percentage in percentages:
-            dataset = ImputedDataset(
-                base_dataset=[(image, label)],
-                mask=[np.repeat(saliency[:, :, None], 3, axis=2)],
-                th_p=float(percentage), remove=True,
-                imputation=NoisyLinearImputer(noise=noise),
-                prediction=[label], use_cache=False,
-            )
-            imputed, _, _ = dataset[0]
-            with torch.no_grad():
-                probabilities = model(normalize_ImageNet1k(imputed.unsqueeze(0).to(device)))
-            if not torch.isfinite(probabilities).all():
-                raise ValueError("Nonfinite BLIP probabilities during ROAD evaluation")
-            curve.append(float(probabilities[0, label].item()))
-            accuracy.append(float(probabilities.argmax(dim=1).item() == label))
-    finally:
-        np.random.set_state(generator_state)
-    # Match the existing clean_score ROAD integration over percentages 0.1..0.9.
-    def integrate(values):
-        return sum(
-            (left + right) * (x_right - x_left) / 2
-            for left, right, x_left, x_right in zip(
-                values, values[1:], percentages, percentages[1:]
-            )
-        )
-    maximum = max(curve)
-    return {
-        "percentages": percentages.tolist(),
-        "deletion_curve": curve,
-        "deletion_accuracy_curve": accuracy,
-        "deletion_auc": integrate(curve),
-        "deletion_fair_auc": integrate(curve) / maximum if maximum > 0 else None,
-        "deletion_accuracy_auc": integrate(accuracy),
-        "morf": True,
-    }
+    return evaluate_deletion(
+        model, image, saliency, label, device, NoisyLinearImputer(noise=noise), seed=seed,
+    )
 
 
 def main():
@@ -139,8 +100,12 @@ def main():
         logging.info("ROAD group: %s | mode=%s | samples=%d",
                      config_path.parent, mode, len(sample_infos))
         for info_path in sample_infos:
-            output = info_path.parent / "road_deletion_information.json"
-            if output.exists() and not args.overwrite:
+            complete = True
+            for name in ("road_deletion", "DEL_avg_channel"):
+                output = info_path.parent / METRIC_FILES[name]
+                if args.overwrite or not output.exists():
+                    complete = False
+                    continue
                 previous = json.loads(output.read_text(encoding="utf-8"))
                 if (
                     previous.get("model") == "BLIP_ITC"
@@ -149,10 +114,14 @@ def main():
                     and previous.get("checkpoint") == str(config["checkpoint"])
                     and previous.get("last_heads") == config["last_heads"]
                 ):
-                    skipped += 1
+                    if previous.get("metric") != name or previous.get("seed") != args.seed:
+                        complete = False
                     continue
                 raise ValueError(f"Existing ROAD settings differ: {output}; use --overwrite")
-            pending.append((info_path, output))
+            if complete:
+                skipped += 1
+                continue
+            pending.append(info_path)
         if not pending:
             continue
         logging.info("Loading BLIP for %s; samples=%d", config_path.parent, len(pending))
@@ -160,7 +129,7 @@ def main():
         classnames = load_classnames(config.get("classnames_path"))
         classifier = build_zero_shot_blip_classifier(adapter, classnames, config["prompt_template"])
         model = build_causal_metric_model(classifier)
-        for info_path, output in pending:
+        for info_path in pending:
             info = json.loads(info_path.read_text(encoding="utf-8"))
             image_path, saliency_path = attack_artifacts(
                 info_path.parent, mode, config["hm_type"],
@@ -178,20 +147,23 @@ def main():
             label = info["adv_pred_label"]
             if not isinstance(label, int) or not 0 <= label < len(classnames):
                 raise ValueError(f"Invalid adv_pred_label: {info_path}")
-            payload = evaluate(model, image, saliency, label, device, args.noise, args.seed)
-            payload.update({
-                "model": "BLIP_ITC", "metric": "road_deletion",
+            results = evaluate_both(model, image, saliency, label, device, args.noise, args.seed)
+            metadata = {
+                "model": "BLIP_ITC",
                 "attack_mode": mode, "map_source": "post_attack",
                 "target_label": label, "target_source": "adv_pred_label",
                 "road_noise": args.noise, "road_seed": args.seed,
                 "checkpoint": str(config["checkpoint"]), "last_heads": config["last_heads"],
                 "image_path_used": str(image_path), "saliency_path_used": str(saliency_path),
-            })
-            temporary = output.with_suffix(".json.tmp")
-            temporary.write_text(json.dumps(payload, indent=2, allow_nan=False), encoding="utf-8")
-            temporary.replace(output)
+            }
+            for name, payload in results.items():
+                payload.update(metadata)
+                output = info_path.parent / METRIC_FILES[name]
+                temporary = output.with_suffix(".json.tmp")
+                temporary.write_text(json.dumps(payload, indent=2, allow_nan=False), encoding="utf-8")
+                temporary.replace(output)
+                logging.info("Saved %s", output)
             processed += 1
-            logging.info("Saved %s", output)
         del model, classifier, adapter
     for mode in args.modes:
         if mode not in discovered_modes:

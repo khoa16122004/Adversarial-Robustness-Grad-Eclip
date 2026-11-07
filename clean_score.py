@@ -27,6 +27,7 @@ from util import (
 from RISE.evaluation import CausalMetric, auc
 from road_evaluation.road.imputed_dataset import ImputedDataset
 from road_evaluation.road.imputations import ChannelMeanImputer, NoisyLinearImputer, ZeroImputer
+from road_evaluation.deletion_metrics import METRIC_FILES, evaluate_deletion, metric_name
 
 
 DEFAULT_ROAD_PERCENTAGES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
@@ -107,57 +108,12 @@ def evaluate_road_deletion(
     percentages,
     imputer,
     device,
+    seed=42,
 ):
-    base_dataset = SingleImageDataset(image_raw, pred_label)
-    deletion_curve = []
-    deletion_acc_curve = []
-
-    metric_model.eval()
-    metric_model.to(device)
-
-    for p in percentages:
-        ds_imputed = ImputedDataset(
-            base_dataset=base_dataset,
-            mask=[road_mask],
-            th_p=float(p),
-            remove=True,
-            imputation=imputer,
-            transform=normalize_imagenet1k_clip,
-            prediction=[target_label],
-            use_cache=False,
-        )
-
-        img_imp, label_imp, _ = ds_imputed[0]
-        inputs = img_imp.unsqueeze(0).to(device)
-
-        with torch.no_grad():
-            outputs = metric_model(inputs)
-            if outputs.ndim != 2:
-                raise ValueError("Unexpected model output shape")
-            if target_label < 0 or target_label >= outputs.shape[1]:
-                raise ValueError(
-                    f"target_label out of range: {target_label}, num_classes={outputs.shape[1]}"
-                )
-            top = int(torch.argmax(outputs, dim=1).item())
-            target_prob = float(outputs[0, target_label].item())
-            acc = float(top == int(label_imp))
-
-        deletion_curve.append(target_prob)
-        deletion_acc_curve.append(acc)
-
-    x = np.asarray(percentages, dtype=np.float64)
-    curve_arr = np.asarray(deletion_curve, dtype=np.float64)
-    acc_arr = np.asarray(deletion_acc_curve, dtype=np.float64)
-
-    return {
-        "percentages": to_float_list(percentages),
-        "deletion_curve": to_float_list(deletion_curve),
-        "deletion_accuracy_curve": to_float_list(deletion_acc_curve),
-        "deletion_auc": float(compute_auc(curve_arr, x)),
-        "deletion_fair_auc": compute_fair_auc(curve_arr, x),
-        "deletion_accuracy_auc": float(compute_auc(acc_arr, x)),
-        "morf": True,
-    }
+    return evaluate_deletion(
+        metric_model, image_raw, road_mask, target_label, device, imputer,
+        percentages=percentages, accuracy_label=pred_label, seed=seed,
+    )
 
 
 def parse_args():
@@ -205,7 +161,11 @@ def parse_args():
         "--road-imputer",
         choices=["linear", "zero", "fixed"],
         default="linear",
-        help="ROAD imputer: linear (NoisyLinear), zero, fixed(channel mean)",
+        help="ROAD and DEL_avg_channel always run; zero additionally evaluates DEL_zero",
+    )
+    parser.add_argument(
+        "--road-seed", type=int, default=42,
+        help="Shared seed for attribution tie-breaking and ROAD noise",
     )
     parser.add_argument(
         "--road-linear-noise",
@@ -404,33 +364,30 @@ def main():
         }
 
         road_mask = saliency_to_road_mask(saliency)
-        road_information = evaluate_road_deletion(
-            metric_model=metric_model,
-            image_raw=image_raw,
-            road_mask=road_mask,
-            pred_label=int(pred_label),
-            target_label=int(target_label),
-            percentages=args.road_percentages,
-            imputer=road_imputer,
-            device=device,
-        )
-        road_information.update(
-            {
-                "metric": "road_deletion",
+        imputers = [NoisyLinearImputer(noise=args.road_linear_noise), ChannelMeanImputer()]
+        if args.road_imputer == "zero":
+            imputers.append(road_imputer)
+        for imputer in imputers:
+            road_information = evaluate_road_deletion(
+                metric_model=metric_model, image_raw=image_raw, road_mask=road_mask,
+                pred_label=int(pred_label), target_label=int(target_label),
+                percentages=args.road_percentages, imputer=imputer, device=device, seed=args.road_seed,
+            )
+            road_information.update({
                 "pred_label": int(pred_label),
                 "pred_confidence": float(pred_confidence),
                 "target_label": int(target_label),
                 "saliency_path_used": os.path.join(sample_dir, "saliency", f"{args.hm_type}_saliency.npy"),
                 "image_path_used": clean_resized_path,
-            }
-        )
+                "map_source": "clean",
+            })
+            with open(os.path.join(sample_dir, METRIC_FILES[metric_name(imputer)]), "w", encoding="utf-8") as f:
+                json.dump(road_information, f, ensure_ascii=False, indent=2, allow_nan=False)
         
         with open(os.path.join(sample_dir, "insertion_information.json"), "w", encoding="utf-8") as f:
             json.dump(insertion_information, f, ensure_ascii=False, indent=2)
         with open(os.path.join(sample_dir, "deletion_information.json"), "w", encoding="utf-8") as f:
             json.dump(deletion_information, f, ensure_ascii=False, indent=2)
-        with open(os.path.join(sample_dir, "road_deletion_information.json"), "w", encoding="utf-8") as f:
-            json.dump(road_information, f, ensure_ascii=False, indent=2)
     
 
    

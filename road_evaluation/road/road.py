@@ -33,7 +33,7 @@ def run_road(model, dataset_test, explanations_test, transform_test, percentages
     """
     # Construct Imputer from string.
     if type(imputation) == str:
-        imputation == _from_str(imputation)
+        imputation = _from_str(imputation)
 
     res_acc = torch.zeros(len(percentages))
     prob_acc = torch.zeros(len(percentages))
