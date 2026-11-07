@@ -190,8 +190,14 @@ class NoisyLinearImputer(BaseImputer):
         maskflt = mask.reshape(-1)
         indices_linear = np.argwhere(maskflt==0).flatten() # Indices that need to be imputed.
         # Set up sparse equation system, solve system.
-        A, b = NoisyLinearImputer.setup_sparse_system(mask.numpy(), img.numpy(), neighbors_weights)
-        res = torch.tensor(spsolve(csc_matrix(A), b), dtype=torch.float)
+        if len(indices_linear) == 0:
+            return img.clone()
+        if len(indices_linear) == mask.numel():
+            raise ValueError("Linear imputation requires at least one retained pixel.")
+        A, b = NoisyLinearImputer.setup_sparse_system(mask.numpy(), img.numpy(), self.weighting)
+        res = torch.as_tensor(
+            spsolve(csc_matrix(A), b), dtype=img.dtype,
+        ).reshape(len(indices_linear), img.shape[0])
 
         # Fill the values with the solution of the system.
         img_infill = imgflt.clone()

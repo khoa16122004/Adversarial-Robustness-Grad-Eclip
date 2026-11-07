@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import os
 import numpy as np
 from tqdm import tqdm
@@ -234,9 +235,14 @@ def save_outputs(output_json, output_txt, payload):
 
 def main():
     args = parse_args()
-    for p in args.road_percentages:
-        if p < 0.0 or p > 1.0:
-            raise ValueError("All --road-percentages values must be within [0, 1]")
+    if (
+        len(args.road_percentages) < 2
+        or any(not math.isfinite(p) or not 0 <= p < 1 for p in args.road_percentages)
+        or any(left >= right for left, right in zip(args.road_percentages, args.road_percentages[1:]))
+    ):
+        raise ValueError("--road-percentages requires at least two strictly increasing finite values in [0, 1).")
+    if args.road_seed < 0 or not math.isfinite(args.road_linear_noise) or args.road_linear_noise < 0:
+        raise ValueError("ROAD seed/noise must be nonnegative; noise must be finite.")
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     classnames = load_classnames(args.classnames_path)
