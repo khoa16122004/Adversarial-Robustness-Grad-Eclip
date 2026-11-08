@@ -82,7 +82,8 @@ def encode_siglip_tokens(adapter, image_normalized):
     vision = model.vision_model
     hidden = vision.embeddings(pixels)
     for layer in vision.encoder.layers:
-        hidden = layer(hidden, attention_mask=None)
+        layer_output = layer(hidden, attention_mask=None)
+        hidden = layer_output[0] if isinstance(layer_output, tuple) else layer_output
     hidden = vision.post_layernorm(hidden)
     projection = getattr(model, "visual_projection", None)
     if projection is not None:

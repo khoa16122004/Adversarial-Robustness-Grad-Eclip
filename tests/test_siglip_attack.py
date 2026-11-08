@@ -238,6 +238,21 @@ class SiglipAttackTests(unittest.TestCase):
         self.assertEqual(details["selected_pred_label"], label)
         self.assertEqual(len(details["trace"]), 2)
 
+    def test_siglip_xshift_encoder_accepts_transformers_tuple_outputs(self):
+        from XShift_score_SIGLIP import encode_siglip_tokens
+
+        adapter = self.make_adapter()
+        layer = adapter.model.vision_model.encoder.layers[0]
+        original_forward = layer.forward
+        with patch.object(
+            layer, "forward",
+            side_effect=lambda *args, **kwargs: (original_forward(*args, **kwargs),),
+        ):
+            image = torch.randn(1, 3, 224, 224)
+            tokens = encode_siglip_tokens(adapter, image)
+        self.assertEqual(tokens.shape, (1, 196, 8))
+        self.assertTrue(torch.isfinite(tokens).all())
+
     def test_siglip_launchers_are_regular_shell_scripts(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("run_siglip_xshift.sh", "run_siglip_clean.sh"):
