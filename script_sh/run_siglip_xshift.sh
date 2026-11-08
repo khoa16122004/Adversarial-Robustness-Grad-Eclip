@@ -24,7 +24,7 @@ classnames_paths=(
   "${PET_CLASSNAMES_PATH:-$repo_root/pet.json}"
   "${CUB_CLASSNAMES_PATH:-$repo_root/cub.json}"
 )
-read -r -a hm_types <<< "${HM_TYPES:-eclip game gradcam maskclip rise}"
+read -r -a hm_types <<< "${HM_TYPES:-eclip game gradcam maskclip}"
 eps="${EPS:-16}"
 alpha="${ALPHA:-4}"
 
