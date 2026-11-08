@@ -10,7 +10,7 @@ device="${DEVICE:-cuda}"
 python_bin="${PYTHON:-python}"
 datasets=(ImageNet StandfordPet cub)
 img_dirs=(
-  "${IMAGENET_IMG_DIR:-/datastore/quanphm/datasets/ImageNet/val}"
+  "${IMAGENET_IMG_DIR:-imagenetval_1k}"
   "${PET_IMG_DIR:-$repo_root/StandfordPet_Dataset}"
   "${CUB_IMG_DIR:-$repo_root/cub_dataset}"
 )
