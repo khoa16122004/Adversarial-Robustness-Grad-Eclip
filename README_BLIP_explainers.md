@@ -564,3 +564,16 @@ After all runs succeed it creates
 and does not report a partial sweep as completed. No dependencies are installed
 automatically. Check the environment instructions above before launching; the
 script checks Transformers helper imports and CUDA availability.
+# Paired deletion evaluation
+
+`road_score_BLIP.py` and `clean_score_BLIP.py` now evaluate both true ROAD
+(noisy linear imputation) and `DEL_avg_channel` (per-image channel-mean fill).
+They save `road_deletion_information.json` and
+`del_avg_channel_information.json` separately, with matched masks, labels
+and percentages. Existing LaTeX scripts continue to read only ROAD.
+The attack evaluator resumes only when both metrics have matching settings;
+use `--overwrite` when changing noise, seed, checkpoint or head configuration.
+
+```bash
+python road_score_BLIP.py --input-root BLIP_result --epsilon 2 --device cuda --seed 42
+```

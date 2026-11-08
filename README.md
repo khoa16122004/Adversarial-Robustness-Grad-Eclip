@@ -59,6 +59,47 @@ foreach ($hm in @("eclip","game","gradcam","maskclip","rise")) {
 
 ## 3) Run ROAD evaluation
 
+All CLIP/BLIP/SigLIP deletion evaluators now run two distinct metrics:
+
+- **ROAD** (`metric: road_deletion`): noisy linear imputation (Remove And Debias).
+  No additional pretrained imputation checkpoint is needed.
+- **DEL_avg_channel**: replace deleted pixels with the original image's mean
+  value per channel. This is a deletion baseline, **not ROAD**.
+
+Both use the same image, saliency, scoring label, nested pixel masks and
+percentages (default 0.1..0.9). The shared seed controls attribution tie-breaking
+and linear noise without changing caller RNG states. Each percentage starts
+from the untouched image. AUC is integrated over the supplied percentages;
+fair AUC divides the curve by its own maximum.
+
+Each sample receives `road_deletion_information.json` and
+`del_avg_channel_information.json`, with separate curves, AUCs, imputer
+metadata and seeds. Existing CLIP results without this metadata are recomputed
+instead of merging new metadata into old curves. BLIP resumes only when both
+outputs are present; use `--overwrite` if recorded evaluation settings differ.
+Existing LaTeX exporters are unchanged and continue reading only true ROAD.
+
+```bash
+python road_score_CLIP.py --input-root outputs_fixed --clip-model ViT-B/16 --device cuda --seed 42
+python road_score_BLIP.py --input-root BLIP_result --epsilon 2 --device cuda --seed 42
+python road_score_SIGLIP.py --input-root SIGLIP_result --device cuda --seed 42
+```
+
+The CLIP entrypoint also supports the batch options of
+`main_script/ROAD_evaluate_and_export.py` shown below. BLIP and SigLIP read
+the saved attack `run_config.json` to reproduce their classifiers and use
+post-attack saliency. SigLIP accepts any root containing its run configs,
+including an epsilon-specific subtree. Run each family in its compatible
+Python environment.
+
+`clean_score.py` and `clean_score_BLIP.py` also save both clean baselines.
+CLIP's `--road-imputer` and batch `--imputer` remain accepted, but `linear`
+and `fixed` now both run the pair; `zero` additionally saves **DEL_zero** to
+`del_zero_information.json`, never under the ROAD filename. Use
+`--road-seed` for CLIP clean runs, `--seed` for evaluation runners.
+Linear ROAD requires at least one retained pixel, so percentages must be
+strictly increasing, have at least two values, and stay in `[0, 1)`.
+
 ### Fixed-mask CLIP attacks
 
 `adv_score_CLIP_fixed_masked.py` uses `AdversarialCausalMetricFixedMask` for

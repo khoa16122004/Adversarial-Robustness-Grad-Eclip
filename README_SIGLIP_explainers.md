@@ -1,5 +1,22 @@
 # SigLIP explainers and adversarial evaluation
 
+## ROAD and channel-mean deletion
+
+```bash
+python road_score_SIGLIP.py --input-root SIGLIP_result --device cuda --seed 42
+```
+
+The evaluator discovers recorded attack `run_config.json` files, loads the
+recorded SigLIP model and classifier, and evaluates saved post-attack maps.
+Use an epsilon-specific `--input-root` to restrict evaluation.
+It scores the saved adversarial predicted class, matching attack reruns.
+It saves both `road_deletion_information.json` (noisy linear ROAD) and
+`del_avg_channel_information.json` (`DEL_avg_channel`, original per-channel
+mean fill). Both use the same nested masks and default percentages 0.1..0.9.
+No separate pretrained model is needed for linear imputation.
+`--noise`, `--seed`, `--modes` and `--overwrite` control evaluation.
+Run in the SigLIP environment, not the BLIP Transformers environment.
+
 The SigLIP implementation uses Hugging Face `SiglipModel` and
 `SiglipProcessor`; no separate checkpoint file or BLIP source checkout is
 needed. Use a Transformers installation that includes SigLIP (see
@@ -160,3 +177,21 @@ SigLIP-compatible Transformers dependency. `script_sh/test_siglip.sh` requires
 `IMAGE_PATH` and `TEXT`; `script_sh/run_siglip.sh` requires `IMG_DIR` and
 `SAMPLE_PATH`. The attack launcher accepts `MODEL`, `MODE`, `OUTPUT_DIR`,
 `HM_TYPES`, `EPSILONS`, and the corresponding batch/PGD environment variables.
+
+## Normal (non-Slurm) X-Shift and clean runs
+
+Activate the SigLIP Python environment, then launch directly from the
+repository. These scripts do not submit jobs through `sbatch`:
+
+```bash
+bash script_sh/run_siglip_xshift.sh
+bash script_sh/run_siglip_clean.sh
+```
+
+Both launchers run ImageNet, Stanford Pets and CUB by default, using the
+`siglip_100.json` sample lists. Set `IMAGENET_IMG_DIR`, `PET_IMG_DIR`,
+`CUB_IMG_DIR`, the matching `*_SAMPLE_PATH`/`*_CLASSNAMES_PATH` variables,
+`OUTPUT_DIR`, `MODEL`, `DEVICE`, or `HM_TYPES` to override defaults. X-Shift
+also accepts `EPS`, `ALPHA`, and `XSHIFT_STEPS`. Each runner can instead be
+invoked directly with one dataset's `--img-dir`, `--sample-path`,
+`--classnames-path`, and `--output-dir`.

@@ -1,6 +1,7 @@
 """CPU contract tests for the SigLIP adapter and explainers."""
 
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -210,6 +211,41 @@ class SiglipAttackTests(unittest.TestCase):
                 self.assertTrue(torch.isfinite(torch.autograd.grad(
                     objective, image, retain_graph=True,
                 )[0]).all())
+
+    def test_siglip_xshift_preserves_class_and_perturbation_bound(self):
+        from XShift_score_SIGLIP import encode_siglip_tokens, run_xshift_attack
+
+        adapter = self.make_adapter()
+        classifier = build_zero_shot_siglip_classifier(adapter, ["bird", "dog"], "a photo of {}")
+        image = torch.full((1, 3, 224, 224), 0.5)
+        normalized = (image - image.new_tensor(CLIP_MEAN).view(1, 3, 1, 1)) / image.new_tensor(
+            CLIP_STD,
+        ).view(1, 3, 1, 1)
+        features = encode_siglip_tokens(adapter, normalized)
+        self.assertEqual(features.shape, (1, 196, 8))
+        self.assertTrue(torch.isfinite(features).all())
+        with torch.no_grad():
+            label = int(classifier(normalized).argmax(dim=1).item())
+        adversarial, details = run_xshift_attack(
+            adapter, classifier, image, label, label,
+            classifier.zero_shot_weights.detach(), eps=4 / 255, alpha=1 / 255,
+            xshift_steps=2,
+        )
+        self.assertTrue(torch.isfinite(adversarial).all())
+        self.assertLessEqual((adversarial - image).abs().max().item(), 4 / 255 + 1e-6)
+        self.assertGreaterEqual(adversarial.min().item(), 0)
+        self.assertLessEqual(adversarial.max().item(), 1)
+        self.assertEqual(details["selected_pred_label"], label)
+        self.assertEqual(len(details["trace"]), 2)
+
+    def test_siglip_launchers_are_regular_shell_scripts(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("run_siglip_xshift.sh", "run_siglip_clean.sh"):
+            source = (root / "script_sh" / name).read_text(encoding="utf-8")
+            with self.subTest(name=name):
+                self.assertNotIn("#SBATCH", source)
+                expected = "XSHIFT_STEPS" if "xshift" in name else "clean_score_SIGLIP.py"
+                self.assertIn(expected, source)
 
     def test_gradient_map_score_matches_siglip_logit(self):
         model = self.model
