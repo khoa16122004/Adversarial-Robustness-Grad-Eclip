@@ -165,13 +165,15 @@ def saliency_spearman(clean_path, attack_path):
     return float(spearmanr(maps[0].ravel(), maps[1].ravel())[0])
 
 
-def collect_metrics(root, epsilon, clean_root=None, expected_attacks=ATTACKS):
+def collect_metrics(root, epsilon, clean_root=None, expected_attacks=ATTACKS,
+                    metrics=METRICS, require_imputer_metadata=False):
     # Keep sample-level pairs: never subtract means over unmatched sample sets.
     samples = {}
     scanned = 0
     filenames = {
         "curve_information.json", "insertion_information.json",
         "deletion_information.json", "road_deletion_information.json",
+        "del_avg_channel_information.json",
     }
     clean_maps = index_clean_maps(clean_root or root, epsilon)
     logging.info("Indexed %d clean saliency maps for eps_%s", len(clean_maps), epsilon)
@@ -196,10 +198,17 @@ def collect_metrics(root, epsilon, clean_root=None, expected_attacks=ATTACKS):
         key = (dataset, explainer, attack, path.parent)
         record = samples.setdefault(key, {})
         try:
-            if path.name == "road_deletion_information.json":
+            if path.name in ("road_deletion_information.json", "del_avg_channel_information.json"):
+                metric = "ROAD" if path.name == "road_deletion_information.json" else "DEL_mean"
+                expected_name = "road_deletion" if metric == "ROAD" else "DEL_avg_channel"
+                expected_imputer = "linear" if metric == "ROAD" else "fixed"
+                if require_imputer_metadata and (
+                    data.get("metric") != expected_name or data.get("imputer") != expected_imputer
+                ):
+                    raise ValueError(f"Missing or incorrect imputation metadata: {path}; rerun BLIP evaluation.")
                 value = finite_number(data.get("deletion_fair_auc"))
                 if value is not None:
-                    record["ROAD"] = value
+                    record[metric] = value
                 continue
             rerun = data.get("rerun", {})
             for mode, prefix in (("ins", "insertion"), ("del", "deletion")):
@@ -238,7 +247,7 @@ def collect_metrics(root, epsilon, clean_root=None, expected_attacks=ATTACKS):
                     record["SRC"] = correlation
         if "ins" in record and "del" in record:
             record["IMD"] = record["ins"] - record["del"]
-        for metric in METRICS:
+        for metric in metrics:
             if metric in record:
                 values.setdefault((dataset, explainer, attack, metric), []).append(record[metric])
     means = {key: statistics.mean(items) for key, items in values.items()}

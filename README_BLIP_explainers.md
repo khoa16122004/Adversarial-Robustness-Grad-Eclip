@@ -566,6 +566,65 @@ automatically. Check the environment instructions above before launching; the
 script checks Transformers helper imports and CUDA availability.
 # Paired deletion evaluation
 
+## Full sbatch evaluation and averaged BLIP table
+
+Submit from the repository on the cluster:
+
+```bash
+sbatch script_sh/eval_blip_all_sbatch.sh \
+  --clean-root /datastore/khangtd/Adversarial-Robustness-Grad-Eclip/BLIP_result_clean \
+  --attack-root /datastore/khangtd/Adversarial-Robustness-Grad-Eclip/BLIP_result_rerun \
+  --attack-root /datastore/khangtd/Adversarial-Robustness-Grad-Eclip/BLIP_result_xshift \
+  --epsilon 16 \
+  --output-dir /datastore/khangtd/Adversarial-Robustness-Grad-Eclip/BLIP_evaluation_tables
+```
+
+The job uses the existing UIT `large` partition, `Sparse_Attack` conda
+environment, one 35GB GPU slice, 16 CPUs, 64GB RAM and 72 hours.
+Override cluster resources with `sbatch --gres=... --mem=...` as needed.
+`REPO_ROOT`, `CONDA_INIT`, `CONDA_ENV`, `PYTHON`, `ROAD_NOISE` and `SEED`
+can be supplied through the environment. Logs are `blip_eval_all_<jobid>.out`
+and `.err` in the submission directory.
+
+Inputs must already contain completed attacks/clean results:
+
+```text
+clean-root/<dataset>/clean/<explainer>/run_config.json
+clean-root/<dataset>/clean/<explainer>/<sample>/clean_image_resized.png
+clean-root/<dataset>/clean/<explainer>/<sample>/saliency/<explainer>_saliency.npy
+attack-root/<dataset>/eps_16/<explainer>/<ins|del|del+ins|xshift>/run_config.json
+attack-root/<dataset>/eps_16/<explainer>/<mode>/<sample>/curve_information.json
+```
+
+Saved attack images and post-attack saliency are required as usual.
+The job evaluates ROAD and channel-mean deletion for all existing explainers
+and datasets, including the saved clean baseline; it does not rerun PGD or
+generate explanations. `--attack-root` can be repeated for separate IOA,
+DOA, joint and X-Shift folders. Overlapping dataset/explainer/attack metrics
+across roots are rejected rather than double-counted. Checkpoints and class
+names come from each run configuration; use `--checkpoint` only to deliberately
+override the recorded checkpoint, with `--overwrite` to recompute old results.
+
+Output files are `BLIP_result_avg_eps_16.tex`, `.csv` and `.json`.
+The LaTeX follows the BLIP section of `script_sh/BLIP_result_avg.tex`: five
+attack rows, three datasets, and IMD, SRC, Del_mean, ROAD in each dataset.
+Each cell is an equal-weight average of available explainer sample means,
+not a pooled mean that gives larger explainers more weight. JSON/CSV list
+the contributing explainers and counts per cell. Missing values are `--`;
+clean SRC is not applicable. Different cells may have different available
+explainer sets, which should be checked before reporting comparisons.
+IMD uses rerun insertion/deletion curves normalized separately by their max;
+Del_mean and ROAD use `deletion_fair_auc`. SRC is computed against matching
+clean sample maps when not already recorded.
+
+To export again without GPU inference:
+
+```bash
+python script_eval/export_blip_average.py --clean-root BLIP_result_clean \
+  --attack-roots BLIP_result_rerun BLIP_result_xshift \
+  --epsilon 16 --output-dir BLIP_evaluation_tables
+```
+
 `road_score_BLIP.py` and `clean_score_BLIP.py` now evaluate both true ROAD
 (noisy linear imputation) and `DEL_avg_channel` (per-image channel-mean fill).
 They save `road_deletion_information.json` and

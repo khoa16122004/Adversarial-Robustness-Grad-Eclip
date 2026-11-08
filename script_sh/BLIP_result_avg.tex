@@ -1,0 +1,65 @@
+\begin{table*}[h]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.1}
+\setlength{\tabcolsep}{4pt}
+\caption{
+Comparison of different attack strategies across three VLMs.
+Results are averaged across explainers.
+Lower IMD ($\downarrow$) and SRC ($\downarrow$), while higher
+Del$_{\text{mean}}$ ($\uparrow$) and ROAD ($\uparrow$), indicate more effective attacks.
+Del$_{\text{mean}}$ denotes deletion with channel-wise mean imputation, whereas ROAD uses Noisy Linear Imputation.
+}
+\label{tab:faithfulness}
+\vspace{4pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccccccccc}
+\toprule
+
+% ==================== BLIP ====================
+\multicolumn{13}{c}{\textbf{BLIP}} \\
+\midrule
+\textbf{Attack}
+& \multicolumn{4}{c}{ImageNet}
+& \multicolumn{4}{c}{StanfordPets}
+& \multicolumn{4}{c}{CUB} \\
+\cmidrule(lr){2-5}
+\cmidrule(lr){6-9}
+\cmidrule(lr){10-13}
+& IMD $\downarrow$ & SRC $\downarrow$ & Del$_{\text{mean}}$ $\uparrow$ & ROAD $\uparrow$
+& IMD $\downarrow$ & SRC $\downarrow$ & Del$_{\text{mean}}$ $\uparrow$ & ROAD $\uparrow$
+& IMD $\downarrow$ & SRC $\downarrow$ & Del$_{\text{mean}}$ $\uparrow$ & ROAD $\uparrow$ \\
+\midrule
+Without Attack & & & & & & & & & & & & \\
+X-Shift        & & & & & & & & & & & & \\
+% \midrule
+IOA            & & & & & & & & & & & & \\
+DOA            & & & & & & & & & & & & \\
+IOA+DOA        & & & & & & & & & & & & \\
+
+\midrule
+% ==================== SigLIP ====================
+\multicolumn{13}{c}{\textbf{SigLIP}} \\
+\midrule
+\textbf{Attack}
+& \multicolumn{4}{c}{ImageNet}
+& \multicolumn{4}{c}{StanfordPets}
+& \multicolumn{4}{c}{CUB} \\
+\cmidrule(lr){2-5}
+\cmidrule(lr){6-9}
+\cmidrule(lr){10-13}
+& IMD $\downarrow$ & SRC $\downarrow$ & Del$_{\text{mean}}$ $\uparrow$ & ROAD $\uparrow$
+& IMD $\downarrow$ & SRC $\downarrow$ & Del$_{\text{mean}}$ $\uparrow$ & ROAD $\uparrow$
+& IMD $\downarrow$ & SRC $\downarrow$ & Del$_{\text{mean}}$ $\uparrow$ & ROAD $\uparrow$ \\
+\midrule
+Without Attack & & & & & & & & & & & & \\
+X-Shift        & & & & & & & & & & & & \\
+% \midrule
+IOA            & & & & & & & & & & & & \\
+DOA            & & & & & & & & & & & & \\
+IOA+DOA        & & & & & & & & & & & & \\
+
+\bottomrule
+\end{tabular}%
+}
+\end{table*}

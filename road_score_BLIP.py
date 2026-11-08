@@ -43,6 +43,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-root", type=Path, default=Path("BLIP_result"))
     parser.add_argument("--epsilon", required=True, help="Single epsilon, e.g. 2")
+    parser.add_argument("--clean-only", action="store_true",
+                        help="Evaluate saved clean images/maps under dataset/clean/explainer/sample")
     parser.add_argument("--datasets", nargs="+", default=None, help="Dataset folder names")
     parser.add_argument(
         "--modes", nargs="+", choices=("ins", "del", "del+ins", "xshift"),
@@ -67,7 +69,7 @@ def main():
     configs = sorted(
         path for dataset in root.iterdir()
         if dataset.is_dir() and (not args.datasets or dataset.name in args.datasets)
-        for path in (dataset / f"eps_{epsilon}").glob("**/run_config.json")
+        for path in (dataset / ("clean" if args.clean_only else f"eps_{epsilon}")).glob("**/run_config.json")
     )
     if not configs:
         raise FileNotFoundError(f"No BLIP run_config.json for eps_{epsilon} under {root}")
@@ -83,12 +85,13 @@ def main():
         config = json.loads(config_path.read_text(encoding="utf-8"))
         if config.get("model") != "BLIP_ITC":
             raise ValueError(f"Not a BLIP attack configuration: {config_path}")
-        mode = config["mode"]
-        if mode not in ("ins", "del", "del+ins", "xshift"):
+        mode = "clean" if args.clean_only else config["mode"]
+        if mode not in ("clean", "ins", "del", "del+ins", "xshift"):
             raise ValueError(f"Unsupported attack mode {mode}: {config_path}")
-        if mode not in args.modes:
+        if mode != "clean" and mode not in args.modes:
             continue
         discovered_modes.add(mode)
+        method = config_path.parent.name if args.clean_only else config["hm_type"]
         config["checkpoint"] = args.checkpoint or Path(config["checkpoint"])
         config["blip_root"] = args.blip_root.resolve()
         if not config["checkpoint"].is_file():
@@ -109,8 +112,8 @@ def main():
                 previous = json.loads(output.read_text(encoding="utf-8"))
                 if (
                     previous.get("model") == "BLIP_ITC"
-                    and previous.get("road_noise") == args.noise
-                    and previous.get("road_seed") == args.seed
+                    and previous.get("road_noise", previous.get("linear_noise") if name == "road_deletion" else args.noise) == args.noise
+                    and previous.get("road_seed", previous.get("seed")) == args.seed
                     and previous.get("checkpoint") == str(config["checkpoint"])
                     and previous.get("last_heads") == config["last_heads"]
                 ):
@@ -131,9 +134,11 @@ def main():
         model = build_causal_metric_model(classifier)
         for info_path in pending:
             info = json.loads(info_path.read_text(encoding="utf-8"))
-            image_path, saliency_path = attack_artifacts(
-                info_path.parent, mode, config["hm_type"],
-            )
+            if args.clean_only:
+                image_path = info_path.parent / "clean_image_resized.png"
+                saliency_path = info_path.parent / "saliency" / f"{method}_saliency.npy"
+            else:
+                image_path, saliency_path = attack_artifacts(info_path.parent, mode, method)
             with Image.open(image_path) as source:
                 image = to_tensor(source.convert("RGB"))
             saliency = np.load(saliency_path, allow_pickle=False).squeeze()
@@ -144,14 +149,14 @@ def main():
             ):
                 raise ValueError(f"Invalid image/saliency shape or values: {info_path.parent}")
             # Match CausalMetric reruns: score the unmasked adversarial predicted class.
-            label = info["adv_pred_label"]
+            label = info["pred_label"] if args.clean_only else info["adv_pred_label"]
             if not isinstance(label, int) or not 0 <= label < len(classnames):
                 raise ValueError(f"Invalid adv_pred_label: {info_path}")
             results = evaluate_both(model, image, saliency, label, device, args.noise, args.seed)
             metadata = {
                 "model": "BLIP_ITC",
-                "attack_mode": mode, "map_source": "post_attack",
-                "target_label": label, "target_source": "adv_pred_label",
+                "attack_mode": mode, "map_source": "clean" if args.clean_only else "post_attack",
+                "target_label": label, "target_source": "pred_label" if args.clean_only else "adv_pred_label",
                 "road_noise": args.noise, "road_seed": args.seed,
                 "checkpoint": str(config["checkpoint"]), "last_heads": config["last_heads"],
                 "image_path_used": str(image_path), "saliency_path_used": str(saliency_path),
@@ -165,7 +170,7 @@ def main():
                 logging.info("Saved %s", output)
             processed += 1
         del model, classifier, adapter
-    for mode in args.modes:
+    for mode in (["clean"] if args.clean_only else args.modes):
         if mode not in discovered_modes:
             logging.warning("No attack configurations for mode=%s at eps_%s; not evaluated",
                             mode, epsilon)
